@@ -14,6 +14,9 @@ class Variable:
     def set_creator(self, func):
         self.creator = func
 
+    def cleargrad(self):
+        self.grad = None
+
     def backward(self):
         if self.grad is None:
             self.grad = np.ones_like(self.data)
@@ -27,7 +30,10 @@ class Variable:
                 gxs = (gxs,)
 
             for x, gx in zip(f.inputs, gxs):
-                x.grad = gx
+                if x.grad is None:
+                    x.grad = gx
+                else:
+                    x.grad = x.grad + gx
 
                 if x.creator is not None:
                     funcs.append(x.creator)
@@ -60,22 +66,6 @@ class Function:
         raise NotImplementedError()
 
 
-class Square(Function):
-    def forward(self, x):
-        y = x ** 2
-        return y
-
-    def backward(self, gy):
-        x = self.inputs[0].data
-        gx = 2 * x * gy
-        return gx
-
-
-def square(x):
-    f = Square()
-    return f(x)
-
-
 class Add(Function):
     def forward(self, x0, x1):
         y = x0 + x1
@@ -89,11 +79,12 @@ def add(x0, x1):
     return Add()(x0, x1)
 
 
-x = Variable(np.array(2.0))
-y = Variable(np.array(3.0))
-
-z = add(square(x), square(y))
-z.backward()
-print(z.data)
+x = Variable(np.array(7.0))
+y = add(x, x)
+y.backward()
 print(x.grad)
-print(y.grad)
+
+x = Variable(np.array(5.0))
+y = add(add(x, x), x)
+y.backward()
+print(x.grad)
