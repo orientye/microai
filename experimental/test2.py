@@ -20,7 +20,7 @@ class Variable:
     def cleargrad(self):
         self.grad = None
 
-    def backward(self):
+    def backward(self, retain_grad=False):
         if self.grad is None:
             self.grad = np.ones_like(self.data)
 
@@ -50,6 +50,10 @@ class Variable:
 
                 if x.creator is not None:
                     add_func(x.creator)
+
+            if not retain_grad:
+                for y in f.outputs:
+                    y().grad = None  # y is weakref
 
 
 def as_array(x):
