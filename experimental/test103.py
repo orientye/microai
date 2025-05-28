@@ -18,7 +18,7 @@ x1 = Variable(np.array(2.0))
 #print(x0.grad, x1.grad)
 
 lr = 0.001
-iters = 10000
+iters = 50000
 
 for i in range(iters):
     print(x0, x1)
