@@ -35,9 +35,9 @@ class Variable:
             if not isinstance(data, np.ndarray):
                 raise TypeError('{} is not supported'.format(type(data)))
 
-        self.data = data
+        self.data = data #forward propagation
         self.name = name
-        self.grad = None
+        self.grad = None #backward propagation
         self.creator = None
         self.generation = 0
 
