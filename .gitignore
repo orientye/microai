@@ -1,4 +1,4 @@
 /.idea
 /.vs
 /venv
-
+/microai/__pycache__/
