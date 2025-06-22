@@ -1,7 +1,7 @@
 import weakref
 import numpy as np
 import contextlib
-
+import microai
 
 # =============================================================================
 # Config
@@ -111,6 +111,11 @@ class Variable:
             if not retain_grad:
                 for y in f.outputs:
                     y().grad = None  # y is weakref
+
+    def reshape(self, *shape):
+        if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
+            shape = shape[0]
+        return microai.funcs.reshape(self, shape)
 
 
 def as_variable(obj):
