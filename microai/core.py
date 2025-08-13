@@ -117,6 +117,13 @@ class Variable:
             shape = shape[0]
         return microai.funcs.reshape(self, shape)
 
+    def transpose(self, *axes):
+        if len(axes) == 0:
+            axes = None
+        elif len(axes) == 1:
+            if isinstance(axes[0], (tuple, list)) or axes[0] is None:
+                axes = axes[0]
+        return microai.funcs.transpose(self, axes)
 
 def as_variable(obj):
     if isinstance(obj, Variable):
