@@ -2,3 +2,4 @@
 /.vs
 /venv
 /microai/__pycache__/
+/test/__pycache__/
