@@ -1,6 +1,7 @@
 from microai import Function, cuda, util
 from microai import as_variable
 
+
 class Sin(Function):
     def forward(self, x):
         xp = cuda.get_array_module(x)
@@ -48,6 +49,7 @@ class Tanh(Function):
 def tanh(x):
     return Tanh()(x)
 
+
 class Reshape(Function):
     def __init__(self, shape):
         self.shape = shape
@@ -66,6 +68,7 @@ def reshape(x, shape):
         return as_variable(x)
     return Reshape(shape)(x)
 
+
 class Sum(Function):
     def __init__(self, axis, keepdims):
         self.axis = axis
@@ -78,13 +81,14 @@ class Sum(Function):
 
     def backward(self, gy):
         gy = util.reshape_sum_backward(gy, self.x_shape, self.axis,
-                                        self.keepdims)
+                                       self.keepdims)
         gx = broadcast_to(gy, self.x_shape)
         return gx
 
 
 def sum(x, axis=None, keepdims=False):
     return Sum(axis, keepdims)(x)
+
 
 class SumTo(Function):
     def __init__(self, shape):
