@@ -125,6 +125,10 @@ class Variable:
                 axes = axes[0]
         return microai.funcs.transpose(self, axes)
 
+    @property
+    def T(self):
+        return microai.funcs.transpose(self)
+
 def as_variable(obj):
     if isinstance(obj, Variable):
         return obj
