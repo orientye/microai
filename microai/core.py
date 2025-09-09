@@ -129,6 +129,9 @@ class Variable:
     def T(self):
         return microai.funcs.transpose(self)
 
+    def sum(self, axis=None, keepdims=False):
+        return microai.funcs.sum(self, axis, keepdims)
+
 def as_variable(obj):
     if isinstance(obj, Variable):
         return obj
