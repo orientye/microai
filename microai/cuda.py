@@ -12,7 +12,7 @@ def get_array_module(x):
     """Returns the array module for `x`.
 
     Args:
-        x (dezero.Variable or numpy.ndarray or cupy.ndarray): Values to
+        x (microai.Variable or numpy.ndarray or cupy.ndarray): Values to
             determine whether NumPy or CuPy should be used.
 
     Returns:

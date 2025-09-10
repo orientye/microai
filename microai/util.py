@@ -44,7 +44,7 @@ def get_dot_graph(output, verbose=True):
     graphviz package (www.graphviz.org).
 
     Args:
-        output (dezero.Variable): Output variable from which the graph is
+        output (microai.Variable): Output variable from which the graph is
             constructed.
         verbose (bool): If True the dot graph contains additional information
             such as shapes and dtypes.
@@ -127,17 +127,17 @@ def sum_to(x, shape):
 
 
 def reshape_sum_backward(gy, x_shape, axis, keepdims):
-    """Reshape gradient appropriately for dezero.functions.sum's backward.
+    """Reshape gradient appropriately for microai.funcs.sum's backward.
 
     Args:
-        gy (dezero.Variable): Gradient variable from the output by backprop.
+        gy (microai.Variable): Gradient variable from the output by backprop.
         x_shape (tuple): Shape used at sum function's forward.
         axis (None or int or tuple of ints): Axis used at sum function's
             forward.
         keepdims (bool): Keepdims used at sum function's forward.
 
     Returns:
-        dezero.Variable: Gradient variable which is reshaped appropriately
+        microai.Variable: Gradient variable which is reshaped appropriately
     """
     ndim = len(x_shape)
     tupled_axis = axis
@@ -194,7 +194,7 @@ def gradient_check(f, x, *args, rtol=1e-4, atol=1e-5, **kwargs):
 
     Args:
         f (callable): A function which gets `Variable`s and returns `Variable`s.
-        x (`ndarray` or `dezero.Variable`): A traget `Variable` for computing
+        x (`ndarray` or `microai.Variable`): A traget `Variable` for computing
             the gradient.
         *args: If `f` needs variables except `x`, you can specify with this
             argument.
@@ -236,7 +236,7 @@ def numerical_grad(f, x, *args, **kwargs):
 
     Args:
         f (callable): A function which gets `Variable`s and returns `Variable`s.
-        x (`ndarray` or `dezero.Variable`): A target `Variable` for computing
+        x (`ndarray` or `microai.Variable`): A target `Variable` for computing
             the gradient.
         *args: If `f` needs variables except `x`, you can specify with this
             argument.
@@ -285,7 +285,7 @@ def array_equal(a, b):
     """True if two arrays have the same shape and elements, False otherwise.
 
     Args:
-        a, b (numpy.ndarray or cupy.ndarray or dezero.Variable): input arrays
+        a, b (numpy.ndarray or cupy.ndarray or microai.Variable): input arrays
             to compare
 
     Returns:
@@ -302,7 +302,7 @@ def array_allclose(a, b, rtol=1e-4, atol=1e-5):
     tolerance.
 
     Args:
-        a, b (numpy.ndarray or cupy.ndarray or dezero.Variable): input arrays
+        a, b (numpy.ndarray or cupy.ndarray or microai.Variable): input arrays
             to compare
         rtol (float): The relative tolerance parameter.
         atol (float): The absolute tolerance parameter.
