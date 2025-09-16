@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from microai import Variable
 import microai.funcs as F
 
-# Generate toy dataset
 np.random.seed(0)
 x = np.random.rand(100, 1)
 y = 5 + 2 * x + np.random.rand(100, 1)
@@ -38,7 +37,6 @@ for i in range(iters):
     W.data -= lr * W.grad.data
     b.data -= lr * b.grad.data
     print(W, b, loss)
-
 
 # Plot
 plt.scatter(x.data, y.data, s=10)
