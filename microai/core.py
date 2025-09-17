@@ -258,16 +258,19 @@ class Div(Function):
         x0, x1 = self.inputs
         gx0 = gy / x1
         gx1 = gy * (-x0 / x1 ** 2)
+        if x0.shape != x1.shape:  # for broadcast
+            gx0 = microai.funcs.sum_to(gx0, x0.shape)
+            gx1 = microai.funcs.sum_to(gx1, x1.shape)
         return gx0, gx1
 
 
 def div(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, microai.cuda.get_array_module(x0.data))
     return Div()(x0, x1)
 
 
 def rdiv(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, microai.cuda.get_array_module(x0.data))
     return Div()(x1, x0)
 
 
