@@ -199,11 +199,16 @@ class Mul(Function):
 
     def backward(self, gy):
         x0, x1 = self.inputs
-        return gy * x1, gy * x0
+        gx0 = gy * x1
+        gx1 = gy * x0
+        if x0.shape != x1.shape:  # for broadcast
+            gx0 = microai.funcs.sum_to(gx0, x0.shape)
+            gx1 = microai.funcs.sum_to(gx1, x1.shape)
+        return gx0, gx1
 
 
 def mul(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, microai.cuda.get_array_module(x0.data))
     return Mul()(x0, x1)
 
 
