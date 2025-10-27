@@ -1,4 +1,5 @@
 from microai.core import Variable
+from microai.core import Parameter
 from microai.core import Function
 from microai.core import using_config
 from microai.core import no_grad

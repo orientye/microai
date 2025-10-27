@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from microai import Variable
+from microai import Variable, Parameter
 import microai.funcs as F
 
 import torch
@@ -40,3 +40,10 @@ plt.scatter(x, y, s=10)
 plt.xlabel('x')
 plt.ylabel('y')
 plt.show()
+
+x = Variable(np.array(1.0))
+p = Parameter(np.array(2.0))
+y = x * p
+print(isinstance(p, Parameter))
+print(isinstance( x, Parameter))
+print(isinstance(y , Parameter))
