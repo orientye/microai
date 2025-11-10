@@ -6,5 +6,6 @@ from microai.core import no_grad
 from microai.core import as_array
 from microai.core import as_variable
 from microai.core import init_core
+from microai.layers import Layer
 
 init_core()
