@@ -1,10 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from microai import Variable, Parameter
 import microai.funcs as F
 import microai.layers as L
-
-import torch
 
 np.random.seed(0)
 x = np.random.rand(100, 1)

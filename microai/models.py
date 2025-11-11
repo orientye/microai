@@ -1,4 +1,3 @@
-import numpy as np
 from microai import Layer
 import microai.funcs as F
 import microai.layers as L
