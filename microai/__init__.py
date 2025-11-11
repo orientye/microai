@@ -7,5 +7,6 @@ from microai.core import as_array
 from microai.core import as_variable
 from microai.core import init_core
 from microai.layers import Layer
+from microai.models import Model
 
 init_core()
