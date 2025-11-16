@@ -62,3 +62,55 @@ def manual_momentum_correct():
 
 lib_momentum_example()
 manual_momentum_correct()
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+class SimpleNet(nn.Module):
+    def __init__(self):
+        super(SimpleNet, self).__init__()
+        self.linear = nn.Linear(1, 1)
+
+    def forward(self, x):
+        return self.linear(x)
+
+
+def neural_net_momentum_example():
+    print("\n神经网络中的动量法示例:")
+    print("=" * 50)
+
+    # 创建模型和数据
+    model = SimpleNet()
+    # 设置特定权重以便观察：y = 2x
+    with torch.no_grad():
+        model.linear.weight.data = torch.tensor([[2.0]])
+        model.linear.bias.data = torch.tensor([0.0])
+
+    # 创建优化器（带动量）
+    optimizer = optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
+
+    # 简单的训练数据：尝试拟合 y = x
+    x = torch.tensor([[1.0]])
+    y_true = torch.tensor([[1.0]])
+
+    for epoch in range(10):
+        # 前向传播
+        y_pred = model(x)
+        loss = nn.MSELoss()(y_pred, y_true)
+
+        # 反向传播
+        optimizer.zero_grad()
+        loss.backward()
+
+        # 保存梯度信息（用于观察）
+        weight_grad = model.linear.weight.grad.item()
+
+        # 更新参数
+        optimizer.step()
+
+        print(f"Epoch {epoch + 1}: Loss = {loss.item():.4f}, Weight Grad = {weight_grad:.4f}")
+        print(f"         Weight = {model.linear.weight.item():.4f}")
+
+
+# 运行神经网络示例
+neural_net_momentum_example()
