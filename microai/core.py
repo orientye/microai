@@ -308,3 +308,4 @@ def init_core():
     Variable.__truediv__ = div
     Variable.__rtruediv__ = rdiv
     Variable.__pow__ = pow
+    Variable.__getitem__ = microai.funcs.get_item

@@ -9,4 +9,6 @@ from microai.core import init_core
 from microai.layers import Layer
 from microai.models import Model
 
+import microai.funcs
+
 init_core()
