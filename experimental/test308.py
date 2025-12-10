@@ -5,6 +5,7 @@ import microai.funcs as F
 from microai.models import MLP
 from microai import optimizers
 from microai.core import no_grad
+from microai import datasets
 
 # Hyperparameters
 max_epoch = 300
@@ -12,7 +13,7 @@ batch_size = 30
 hidden_size = 10
 lr = 1.0
 
-x, t = microai.datasets.get_spiral(train=True)
+x, t = datasets.get_spiral(train=True)
 model = MLP((hidden_size, 3))
 optimizer = optimizers.SGD(lr).setup(model)
 

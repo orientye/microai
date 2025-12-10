@@ -8,7 +8,9 @@ from microai.core import as_variable
 from microai.core import init_core
 from microai.layers import Layer
 from microai.models import Model
+from microai.datasets import Dataset
 
 import microai.funcs
+import microai.datasets
 
 init_core()
