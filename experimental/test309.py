@@ -2,6 +2,7 @@ import microai
 import microai.funcs as F
 from microai.models import MLP
 from microai import optimizers
+from microai import DataLoader
 
 max_epoch = 300
 batch_size = 30

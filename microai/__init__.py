@@ -9,6 +9,7 @@ from microai.core import init_core
 from microai.layers import Layer
 from microai.models import Model
 from microai.datasets import Dataset
+from microai.dataloaders import DataLoader
 
 import microai.funcs
 import microai.datasets

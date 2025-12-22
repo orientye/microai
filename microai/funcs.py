@@ -2,7 +2,8 @@ import numpy as np
 
 from microai import Function, cuda, util
 from microai import as_variable
-
+from microai import Variable
+from microai.core import as_array
 
 class Sin(Function):
     def forward(self, x):
@@ -284,6 +285,7 @@ class Softmax(Function):
 def softmax(x, axis=1):
     return Softmax(axis)(x)
 
+
 class SoftmaxCrossEntropy(Function):
     def forward(self, x, t):
         N = x.shape[0]
@@ -297,7 +299,7 @@ class SoftmaxCrossEntropy(Function):
         x, t = self.inputs
         N, CLS_NUM = x.shape
 
-        gy *= 1/N
+        gy *= 1 / N
         y = softmax(x)
         # convert to one-hot
         xp = cuda.get_array_module(t.data)
@@ -308,3 +310,15 @@ class SoftmaxCrossEntropy(Function):
 
 def softmax_cross_entropy(x, t):
     return SoftmaxCrossEntropy()(x, t)
+
+
+def accuracy(y, t):
+    """
+    [WAR] This function is not differentiable.
+    """
+    y, t = as_variable(y), as_variable(t)
+
+    pred = y.data.argmax(axis=1).reshape(t.shape)
+    result = (pred == t.data)
+    acc = result.mean()
+    return Variable(as_array(acc))
