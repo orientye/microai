@@ -27,6 +27,10 @@ class Dataset:
     def prepare(self):
         pass
 
+class Spiral(Dataset):
+    def prepare(self):
+        self.data, self.label = get_spiral(self.train)
+
 def get_spiral(train=True):
     seed = 1984 if train else 2020
     np.random.seed(seed=seed)

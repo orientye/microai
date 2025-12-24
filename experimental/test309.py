@@ -9,8 +9,8 @@ batch_size = 30
 hidden_size = 10
 lr = 1.0
 
-train_set = microai.datasets.get_spiral(train=True)
-test_set = microai.datasets.get_spiral(train=False)
+train_set = microai.datasets.Spiral(train=True)
+test_set = microai.datasets.Spiral(train=False)
 train_loader = DataLoader(train_set, batch_size)
 test_loader = DataLoader(test_set, batch_size, shuffle=False)
 
