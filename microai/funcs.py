@@ -5,6 +5,7 @@ from microai import as_variable
 from microai import Variable
 from microai.core import as_array
 
+
 class Sin(Function):
     def forward(self, x):
         xp = cuda.get_array_module(x)
@@ -243,6 +244,23 @@ class Sigmoid(Function):
 
 def sigmoid(x):
     return Sigmoid()(x)
+
+
+class ReLU(Function):
+    def forward(self, x):
+        xp = cuda.get_array_module(x)
+        y = xp.maximum(x, 0.0)
+        return y
+
+    def backward(self, gy):
+        x, = self.inputs
+        mask = x.data > 0
+        gx = gy * mask
+        return gx
+
+
+def relu(x):
+    return ReLU()(x)
 
 
 class MeanSquaredError(Function):
