@@ -35,6 +35,13 @@ class MLP(Model):
             self.layers.append(layer)
 
     def forward(self, x):
+        # Flatten input if it's not 2D (e.g., for image data)
+        if x.ndim > 2:
+            # Calculate flattened size: batch_size x (all other dimensions)
+            flattened_size = 1
+            for dim in x.shape[1:]:
+                flattened_size *= dim
+            x = F.reshape(x, (x.shape[0], flattened_size))
         for l in self.layers[:-1]:
             x = self.activation(l(x))
         return self.layers[-1](x)
