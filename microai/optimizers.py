@@ -2,6 +2,7 @@ import math
 
 from microai import cuda
 
+
 class Optimizer:
     def __init__(self):
         self.target = None
@@ -26,6 +27,7 @@ class Optimizer:
     def add_hook(self, f):
         self.hooks.append(f)
 
+
 # Stochastic Gradient Descent
 class SGD(Optimizer):
     def __init__(self, lr=0.01):
@@ -34,6 +36,7 @@ class SGD(Optimizer):
 
     def update_one(self, param):
         param.data -= self.lr * param.grad.data
+
 
 class MomentumSGD(Optimizer):
     def __init__(self, lr=0.01, momentum=0.9):
@@ -52,6 +55,7 @@ class MomentumSGD(Optimizer):
         v *= self.momentum
         v -= self.lr * param.grad.data
         param.data += v
+
 
 class Adam(Optimizer):
     def __init__(self, alpha=0.001, beta1=0.9, beta2=0.999, eps=1e-8):
