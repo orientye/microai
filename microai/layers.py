@@ -38,6 +38,14 @@ class Layer:
         for param in self.params():
             param.cleargrad()
 
+    def to_cpu(self):
+        for param in self.params():
+            param.to_cpu()
+
+    def to_gpu(self):
+        for param in self.params():
+            param.to_gpu()
+
 
 class Linear(Layer):
     def __init__(self, out_size, nobias=False, dtype=np.float32, in_size=None):
@@ -47,7 +55,7 @@ class Linear(Layer):
         self.dtype = dtype
 
         self.W = Parameter(None, name='W')
-        if self.in_size is not None: # 如果没有指定in_size, 则延后处理
+        if self.in_size is not None:  # 如果没有指定in_size, 则延后处理
             self._init_W()
 
         if nobias:
@@ -61,7 +69,7 @@ class Linear(Layer):
         self.W.data = W_data
 
     def forward(self, x):
-        if self.W.data is None: # 在传播数据时初始化权重
+        if self.W.data is None:  # 在传播数据时初始化权重
             self.in_size = x.shape[1]
             xp = cuda.get_array_module(x)
             self._init_W(xp)
