@@ -33,7 +33,7 @@ try:
 
     array_types = (np.ndarray, cupy.ndarray)
 except ImportError:
-    array_types = (np.ndarray)
+    array_types = (np.ndarray,)
 
 
 class Variable:
