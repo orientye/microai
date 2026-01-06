@@ -3,6 +3,7 @@ import numpy as np
 import contextlib
 import microai
 
+
 # =============================================================================
 # Config
 # =============================================================================
@@ -27,17 +28,25 @@ def no_grad():
 # =============================================================================
 # Variable / Function
 # =============================================================================
+try:
+    import cupy
+
+    array_types = (np.ndarray, cupy.ndarray)
+except ImportError:
+    array_types = (np.ndarray)
+
+
 class Variable:
     __array_priority__ = 200
 
     def __init__(self, data, name=None):
         if data is not None:
-            if not isinstance(data, np.ndarray):
+            if not isinstance(data, array_types):
                 raise TypeError('{} is not supported'.format(type(data)))
 
-        self.data = data #forward propagation
+        self.data = data
         self.name = name
-        self.grad = None #backward propagation
+        self.grad = None
         self.creator = None
         self.generation = 0
 
@@ -70,12 +79,16 @@ class Variable:
         self.creator = func
         self.generation = func.generation + 1
 
+    def unchain(self):
+        self.creator = None
+
     def cleargrad(self):
         self.grad = None
 
     def backward(self, retain_grad=False, create_graph=False):
         if self.grad is None:
-            self.grad = Variable(np.ones_like(self.data))
+            xp = microai.cuda.get_array_module(self.data)
+            self.grad = Variable(xp.ones_like(self.data))
 
         funcs = []
         seen_set = set()
@@ -87,11 +100,8 @@ class Variable:
                 funcs.sort(key=lambda x: x.generation)
 
         add_func(self.creator)
-
         while funcs:
             f = funcs.pop()
-
-            # backward propagation process
             gys = [output().grad for output in f.outputs]  # output is weakref
 
             with using_config('enable_backprop', create_graph):
@@ -111,6 +121,16 @@ class Variable:
             if not retain_grad:
                 for y in f.outputs:
                     y().grad = None  # y is weakref
+
+    def unchain_backward(self):
+        if self.creator is not None:
+            funcs = [self.creator]
+            while funcs:
+                f = funcs.pop()
+                for x in f.inputs:
+                    if x.creator is not None:
+                        funcs.append(x.creator)
+                        x.unchain()
 
     def reshape(self, *shape):
         if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
@@ -132,6 +152,15 @@ class Variable:
     def sum(self, axis=None, keepdims=False):
         return microai.funcs.sum(self, axis, keepdims)
 
+    def to_cpu(self):
+        if self.data is not None:
+            self.data = microai.cuda.as_numpy(self.data)
+
+    def to_gpu(self):
+        if self.data is not None:
+            self.data = microai.cuda.as_cupy(self.data)
+
+
 def as_variable(obj):
     if isinstance(obj, Variable):
         return obj
@@ -143,14 +172,16 @@ def as_array(x, array_module=np):
         return array_module.array(x)
     return x
 
+
 class Parameter(Variable):
     pass
+
 
 class Function:
     def __call__(self, *inputs):
         inputs = [as_variable(x) for x in inputs]
 
-        #forward propagation process
+        # forward propagation process
         xs = [x.data for x in inputs]
         ys = self.forward(*xs)
         if not isinstance(ys, tuple):
@@ -159,7 +190,7 @@ class Function:
 
         if Config.enable_backprop:
             self.generation = max([x.generation for x in inputs])
-            #create connection
+            # create connection
             for output in outputs:
                 output.set_creator(self)
             self.inputs = inputs
