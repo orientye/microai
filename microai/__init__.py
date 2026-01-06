@@ -11,6 +11,7 @@ from microai.models import Model
 from microai.datasets import Dataset
 from microai.dataloaders import DataLoader
 
+import microai.cuda
 import microai.funcs
 import microai.datasets
 
