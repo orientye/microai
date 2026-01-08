@@ -1,3 +1,4 @@
+import os
 import weakref
 import numpy as np
 import microai.funcs as F
@@ -58,7 +59,6 @@ class Layer:
 
     def save_weights(self, path):
         self.to_cpu()
-        
 
         params_dict = {}
         self._flatten_params(params_dict)
