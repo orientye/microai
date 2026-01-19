@@ -1,6 +1,63 @@
+import numpy as np
+
 from microai.core import Function, as_variable
 from microai.util import pair, get_conv_outsize
 from microai import cuda
+
+def im2col_array(img, kernel_size, stride, pad, to_matrix=True):
+
+    N, C, H, W = img.shape
+    KH, KW = pair(kernel_size)
+    SH, SW = pair(stride)
+    PH, PW = pair(pad)
+    OH = get_conv_outsize(H, KH, SH, PH)
+    OW = get_conv_outsize(W, KW, SW, PW)
+
+    xp = cuda.get_array_module(img)
+    if xp != np:
+        col = _im2col_gpu(img, kernel_size, stride, pad)
+    else:
+        img = np.pad(img,
+                     ((0, 0), (0, 0), (PH, PH + SH - 1), (PW, PW + SW - 1)),
+                     mode='constant', constant_values=(0,))
+        col = np.ndarray((N, C, KH, KW, OH, OW), dtype=img.dtype)
+
+        for j in range(KH):
+            j_lim = j + SH * OH
+            for i in range(KW):
+                i_lim = i + SW * OW
+                col[:, :, j, i, :, :] = img[:, :, j:j_lim:SH, i:i_lim:SW]
+
+    if to_matrix:
+        col = col.transpose((0, 4, 5, 1, 2, 3)).reshape((N * OH * OW, -1))
+
+    return col
+
+
+def col2im_array(col, img_shape, kernel_size, stride, pad, to_matrix=True):
+    N, C, H, W = img_shape
+    KH, KW = pair(kernel_size)
+    SH, SW = pair(stride)
+    PH, PW = pair(pad)
+    OH = get_conv_outsize(H, KH, SH, PH)
+    OW = get_conv_outsize(W, KW, SW, PW)
+
+    if to_matrix:
+        col = col.reshape(N, OH, OW, C, KH, KW).transpose(0, 3, 4, 5, 1, 2)
+
+    xp = cuda.get_array_module(col)
+    if xp != np:
+        img = _col2im_gpu(col, SH, SW, PH, PW, H, W)
+        return img
+    else:
+        img = np.zeros((N, C, H + 2 * PH + SH - 1, W + 2 * PW + SW - 1),
+                       dtype=col.dtype)
+        for j in range(KH):
+            j_lim = j + SH * OH
+            for i in range(KW):
+                i_lim = i + SW * OW
+                img[:, :, j:j_lim:SH, i:i_lim:SW] += col[:, :, j, i, :, :]
+        return img[:, :, PH:H + PH, PW:W + PW]
 
 #将图像数据转换为适合卷积运算的矩阵形式 GPU方式
 def _im2col_gpu(img, kernel_size, stride, pad):
@@ -46,6 +103,17 @@ class Im2col(Function):
         self.pad = pad
         self.to_matrix = to_matrix
 
+    def forward(self, x):
+        self.input_shape = x.shape
+        y = im2col_array(x, self.kernel_size, self.stride, self.pad,
+                         self.to_matrix)
+        return y
+
+    def backward(self, gy):
+        gx = col2im(gy, self.input_shape, self.kernel_size, self.stride,
+                    self.pad, self.to_matrix)
+        return gx
+
 
 def im2col(x, kernel_size, stride=1, pad=0, to_matrix=True):
     """Extract patches from an image based on the filter.
@@ -75,3 +143,38 @@ def im2col(x, kernel_size, stride=1, pad=0, to_matrix=True):
     """
     y = Im2col(kernel_size, stride, pad, to_matrix)(x)
     return y
+
+def _col2im_gpu(col, sy, sx, ph, pw, h, w):
+    n, c, kh, kw, out_h, out_w = col.shape
+    dx, dy = 1, 1
+    img = cuda.cupy.empty((n, c, h, w), dtype=col.dtype)
+
+    cuda.cupy.ElementwiseKernel(
+        'raw T col, int32 h, int32 w, int32 out_h, int32 out_w,'
+        'int32 kh, int32 kw, int32 sy, int32 sx, int32 ph, int32 pw,'
+        'int32 dx, int32 dy',
+        'T img',
+        '''
+           int c0 = i / (h * w);
+           int y  = i / w % h;
+           int x  = i % w;
+           T val = 0;
+           for (int ky = 0; ky < kh; ++ky) {
+             int out_y = (y + ph - ky * dy);
+             if (0 > out_y || out_y >= out_h * sy) continue;
+             if (out_y % sy != 0) continue;
+             out_y /= sy;
+             for (int kx = 0; kx < kw; ++kx) {
+               int out_x = (x + pw - kx * dx);
+               if (0 > out_x || out_x >= out_w * sx) continue;
+               if (out_x % sx != 0) continue;
+               out_x /= sx;
+               int k = out_y + out_h * (kx + kw * (ky + kh * c0));
+               val = val + col[out_x + out_w * k];
+             }
+           }
+           img = val;
+        ''',
+        'col2im')(col.reduced_view(),
+                  h, w, out_h, out_w, kh, kw, sy, sx, ph, pw, dx, dy, img)
+    return img
