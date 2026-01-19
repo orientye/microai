@@ -19,5 +19,6 @@ import microai.datasets
 import microai.dataloaders
 import microai.optimizers
 import microai.layers
+import microai.conv
 
 init_core()
