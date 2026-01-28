@@ -101,7 +101,6 @@ def plot_dot_graph(output, verbose=True, to_file='graph.png'):
     #     pass
 
 
-
 # =============================================================================
 # Utility functions for numpy (numpy magic)
 # =============================================================================

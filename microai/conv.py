@@ -5,7 +5,6 @@ from microai.util import pair, get_conv_outsize
 from microai import cuda
 
 def im2col_array(img, kernel_size, stride, pad, to_matrix=True):
-
     N, C, H, W = img.shape
     KH, KW = pair(kernel_size)
     SH, SW = pair(stride)
