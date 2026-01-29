@@ -1,7 +1,7 @@
 import numpy as np
 
 from microai.core import Function, as_variable
-from microai.util import pair, get_conv_outsize
+from microai.util import pair, get_conv_outsize, get_deconv_outsize
 from microai import cuda
 
 
@@ -181,6 +181,29 @@ def _col2im_gpu(col, sy, sx, ph, pw, h, w):
         'col2im')(col.reduced_view(),
                   h, w, out_h, out_w, kh, kw, sy, sx, ph, pw, dx, dy, img)
     return img
+
+class Col2im(Function):
+    def __init__(self, input_shape, kernel_size, stride, pad, to_matrix):
+        super().__init__()
+        self.input_shape = input_shape
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.pad = pad
+        self.to_matrix = to_matrix
+
+    def forward(self, x):
+        y = col2im_array(x, self.input_shape, self.kernel_size, self.stride,
+                         self.pad, self.to_matrix)
+        return y
+
+    def backward(self, gy):
+        gx = im2col(gy, self.kernel_size, self.stride, self.pad,
+                    self.to_matrix)
+        return gx
+
+
+def col2im(x, input_shape, kernel_size, stride=1, pad=0, to_matrix=True):
+    return Col2im(input_shape, kernel_size, stride, pad, to_matrix)(x)
 
 
 class Conv2d(Function):
