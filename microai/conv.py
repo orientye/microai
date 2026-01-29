@@ -205,7 +205,16 @@ class Col2im(Function):
 def col2im(x, input_shape, kernel_size, stride=1, pad=0, to_matrix=True):
     return Col2im(input_shape, kernel_size, stride, pad, to_matrix)(x)
 
-
+"""
+正向传播：
+使用 im2col_array 将输入转换为列格式
+使用张量点积进行卷积运算
+添加偏置（如果存在）
+反向传播：
+gx：使用 deconv2d 计算输入梯度
+gW：使用 Conv2DGradW 计算权重梯度
+gb：计算偏置梯度
+"""
 class Conv2d(Function):
     def __init__(self, stride=1, pad=0):
         super().__init__()
