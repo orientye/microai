@@ -2,7 +2,7 @@ import numpy as np
 
 from microai.core import Function
 from microai.util import pair, get_conv_outsize, get_deconv_outsize
-from microai.funcs import  broadcast_to
+from microai.funcs import broadcast_to
 from microai import cuda
 
 
@@ -183,6 +183,7 @@ def _col2im_gpu(col, sy, sx, ph, pw, h, w):
                   h, w, out_h, out_w, kh, kw, sy, sx, ph, pw, dx, dy, img)
     return img
 
+
 class Col2im(Function):
     def __init__(self, input_shape, kernel_size, stride, pad, to_matrix):
         super().__init__()
@@ -206,6 +207,7 @@ class Col2im(Function):
 def col2im(x, input_shape, kernel_size, stride=1, pad=0, to_matrix=True):
     return Col2im(input_shape, kernel_size, stride, pad, to_matrix)(x)
 
+
 """
 正向传播：
 使用 im2col_array 将输入转换为列格式
@@ -216,6 +218,8 @@ gx：使用 deconv2d 计算输入梯度
 gW：使用 Conv2DGradW 计算权重梯度
 gb：计算偏置梯度
 """
+
+
 class Conv2d(Function):
     def __init__(self, stride=1, pad=0):
         super().__init__()
@@ -428,7 +432,6 @@ class AveragePooling(Function):
         return y
 
     def backward(self, gy):
-        # TODO(Koki): This is simple implementation
         N, C, OH, OW = gy.shape
         KW, KH = pair(self.kernel_size)
         gy /= (KW * KH)
