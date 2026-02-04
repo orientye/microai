@@ -355,6 +355,7 @@ def dropout(x, dropout_ratio=0.5):
     else:
         return x
 
+
 from microai.conv import conv2d
 from microai.conv import deconv2d
 from microai.conv import im2col
