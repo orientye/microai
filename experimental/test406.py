@@ -17,7 +17,7 @@ with microai.test_mode():
     y = model(x)
 predict_id = np.argmax(y.data)
 
-model.plot(x, to_file='vgg.pdf')
+#model.plot(x, to_file='vgg.pdf')
 labels = microai.datasets.ImageNet.labels()
 print(labels[predict_id])
 

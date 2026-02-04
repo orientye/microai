@@ -354,3 +354,9 @@ def dropout(x, dropout_ratio=0.5):
         return y
     else:
         return x
+
+from microai.conv import conv2d
+from microai.conv import deconv2d
+from microai.conv import im2col
+from microai.conv import col2im
+from microai.conv import pooling
