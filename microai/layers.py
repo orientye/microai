@@ -211,7 +211,7 @@ class Deconv2d(Layer):
 
 class RNN(Layer):
     def __init__(self, hidden_size, in_size=None):
-        """An Elman RNN with tanh.
+        """An Elman RNN with tanh.  (Jeffrey Elman, 1990)
 
         Args:
             hidden_size (int): The number of features in the hidden state.
