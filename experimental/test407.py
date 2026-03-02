@@ -4,6 +4,7 @@ from microai import Model
 import microai.layers as L
 import microai.funcs as F
 import matplotlib.pyplot as plt
+import warnings
 
 rnn = L.RNN(10)
 x = np.random.rand(1, 1)
@@ -66,7 +67,14 @@ with microai.no_grad():
     for x in xs:
         x = np.array(x).reshape(1, 1)
         y = model(x)
-        pred_list.append(float(y.data))
+        if y.data.size == 1:
+            pred_list.append(float(y.data.item()))
+        else:
+            warnings.warn(
+                f"array size not 1: {y.data.size}",
+                RuntimeWarning
+            )
+            pred_list.append(float(y.data.item(0)))  # use first element
 
 plt.plot(np.arange(len(xs)), xs, label='y=cos(x)')
 plt.plot(np.arange(len(xs)), pred_list, label='predict')
