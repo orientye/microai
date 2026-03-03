@@ -74,7 +74,7 @@ with microai.no_grad():
                 f"array size not 1: {y.data.size}",
                 RuntimeWarning
             )
-            pred_list.append(float(y.data.item(0)))  # use first element
+            pred_list.append(float(y.data.item(0)))  # use the first element
 
 plt.plot(np.arange(len(xs)), xs, label='y=cos(x)')
 plt.plot(np.arange(len(xs)), pred_list, label='predict')
