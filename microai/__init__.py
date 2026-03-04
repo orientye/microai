@@ -12,6 +12,7 @@ from microai.layers import Layer
 from microai.models import Model
 from microai.datasets import Dataset
 from microai.dataloaders import DataLoader
+from microai.dataloaders import SeqDataLoader
 
 import microai.cuda
 import microai.funcs
