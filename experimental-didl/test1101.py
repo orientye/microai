@@ -1,3 +1,5 @@
+# https://en.d2l.ai/chapter_attention-mechanisms-and-transformers/queries-keys-values.html
+
 import matplotlib.pyplot as plt
 import torch
 
