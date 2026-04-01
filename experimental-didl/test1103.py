@@ -50,7 +50,7 @@ def constant(x):
 def epanechikov(x):
     return torch.max(1 - torch.abs(x), torch.zeros_like(x))
 
-fig, axes = plt.subplots(1, 4, sharey=True, figsize=(12, 4))
+#fig, axes = plt.subplots(1, 4, sharey=True, figsize=(12, 4))
 
 kernels = (gaussian, boxcar, constant, epanechikov)
 names = ('Gaussian', 'Boxcar', 'Constant', 'Epanechikov')
