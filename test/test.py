@@ -9,6 +9,12 @@ class MyTest(unittest.TestCase):
     def test_sub(self):
         self.assertEqual(3 - 2, 1)
 
+    def test_reshape(self):
+        X = np.random.rand(50, 8, 4) # X 的形状是 (50, 8, 4)
+        reshaped = X.reshape(-1, X.shape[-1]) # (400, 4)  因为 50*8=400，最后一维保持 4
+        expected_shape = (400, 4)
+        self.assertEqual(reshaped.shape, expected_shape)
+
 
 class TestTensorBroadcasting(unittest.TestCase):
     """测试张量广播机制"""
