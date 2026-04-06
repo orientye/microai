@@ -37,4 +37,4 @@ def masked_softmax(X, valid_lens):  #@save
         return nn.functional.softmax(X.reshape(shape), dim=-1)
 
 print(masked_softmax(torch.rand(2, 2, 4), torch.tensor([2, 3])))
-#print(masked_softmax(torch.rand(2, 2, 4), torch.tensor([[1, 3], [2, 4]])))
+print(masked_softmax(torch.rand(2, 2, 4), torch.tensor([[1, 3], [2, 4]])))
