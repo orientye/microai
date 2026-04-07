@@ -3,10 +3,6 @@
 import torch
 
 # https://d2l.ai/chapter_recurrent-neural-networks/rnn-scratch.html#sec-rnn-scratch
-def check_len(a, n):
-    """Check the length of a list."""
-    assert len(a) == n, f'list\'s length {len(a)} != expected length {n}'
-
 def check_shape(a, shape):
     """Check the shape of a tensor."""
     assert a.shape == shape, \
