@@ -51,16 +51,28 @@ class DotProductAttention(nn.Module):  #@save
     # Shape of values: (batch_size, no. of key-value pairs, value dimension)
     # Shape of valid_lens: (batch_size,) or (batch_size, no. of queries)
     def forward(self, queries, keys, values, valid_lens=None):
-        d = queries.shape[-1]
+        d = queries.shape[-1] #获取查询向量的最后一个维度大小（即维度d），用于缩放。
         # Swap the last two dimensions of keys with keys.transpose(1, 2)
         scores = torch.bmm(queries, keys.transpose(1, 2)) / math.sqrt(d)
+        # keys.transpose(1, 2)：交换keys的第1维和第2维
+        # 原始keys形状: (batch_size, 键值对个数, d)
+        # 转置后形状: (batch_size, d, 键值对个数)
+
+        # torch.bmm(queries, keys.transpose(1, 2))：批量矩阵乘法
+        # queries 形状: (batch_size, 查询个数, d)
+        # 计算结果: (batch_size, 查询个数, 键值对个数)
+        # 得到每个query对所有key的点积分数
+
+        # math.sqrt(d)：缩放操作，除以 √d，防止点积值过大导致梯度消失
+
         self.attention_weights = masked_softmax(scores, valid_lens)
         return torch.bmm(self.dropout(self.attention_weights), values)
 
-queries = torch.normal(0, 1, (2, 1, 2))
-keys = torch.normal(0, 1, (2, 10, 2))
-values = torch.normal(0, 1, (2, 10, 4))
-valid_lens = torch.tensor([2, 6])
+'''正态分布，均值0, 标准差为1'''
+queries = torch.normal(0, 1, (2, 1, 2)) # 2个batch，每个batch有1个query，维度2
+keys = torch.normal(0, 1, (2, 10, 2)) # 2个batch，每个batch有10个key，维度2
+values = torch.normal(0, 1, (2, 10, 4)) # 2个batch，每个batch有10个value，维度4
+valid_lens = torch.tensor([2, 6]) # 第1个batch的有效长度为2，第2个为6
 
 attention = DotProductAttention(dropout=0.5)
 attention.eval()
