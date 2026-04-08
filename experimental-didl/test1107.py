@@ -1,4 +1,4 @@
-# https://en.d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html#scaled-dot-product-attention
+# https://en.d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html#additive-attention
 import math
 import matplotlib.pyplot as plt
 import torch
@@ -40,41 +40,39 @@ def check_shape(a, shape):
     assert a.shape == shape, \
             f'tensor\'s shape {a.shape} != expected shape {shape}'
 
-class DotProductAttention(nn.Module):  #@save
-    """Scaled dot product attention."""
-    def __init__(self, dropout):
-        super().__init__()
+class AdditiveAttention(nn.Module):  #@save
+    """Additive attention."""
+    def __init__(self, num_hiddens, dropout, **kwargs):
+        super(AdditiveAttention, self).__init__(**kwargs)
+        self.W_k = nn.LazyLinear(num_hiddens, bias=False)
+        self.W_q = nn.LazyLinear(num_hiddens, bias=False)
+        self.w_v = nn.LazyLinear(1, bias=False)
         self.dropout = nn.Dropout(dropout)
 
-    # Shape of queries: (batch_size, no. of queries, d)
-    # Shape of keys: (batch_size, no. of key-value pairs, d)
-    # Shape of values: (batch_size, no. of key-value pairs, value dimension)
-    # Shape of valid_lens: (batch_size,) or (batch_size, no. of queries)
-    def forward(self, queries, keys, values, valid_lens=None):
-        d = queries.shape[-1] #获取查询向量的最后一个维度大小（即维度d），用于缩放。
-        # Swap the last two dimensions of keys with keys.transpose(1, 2)
-        scores = torch.bmm(queries, keys.transpose(1, 2)) / math.sqrt(d)
-        # keys.transpose(1, 2)：交换keys的第1维和第2维
-        # 原始keys形状: (batch_size, 键值对个数, d)
-        # 转置后形状: (batch_size, d, 键值对个数)
-
-        # torch.bmm(queries, keys.transpose(1, 2))：批量矩阵乘法
-        # queries 形状: (batch_size, 查询个数, d)
-        # 计算结果: (batch_size, 查询个数, 键值对个数)
-        # 得到每个query对所有key的点积分数
-
-        # math.sqrt(d)：缩放操作，除以 √d，防止点积值过大导致梯度消失
-
+    def forward(self, queries, keys, values, valid_lens):
+        queries, keys = self.W_q(queries), self.W_k(keys)
+        # After dimension expansion, shape of queries: (batch_size, no. of
+        # queries, 1, num_hiddens) and shape of keys: (batch_size, 1, no. of
+        # key-value pairs, num_hiddens). Sum them up with broadcasting
+        features = queries.unsqueeze(2) + keys.unsqueeze(1)
+        features = torch.tanh(features)
+        # There is only one output of self.w_v, so we remove the last
+        # one-dimensional entry from the shape. Shape of scores: (batch_size,
+        # no. of queries, no. of key-value pairs)
+        scores = self.w_v(features).squeeze(-1)
         self.attention_weights = masked_softmax(scores, valid_lens)
+        # Shape of values: (batch_size, no. of key-value pairs, value
+        # dimension)
         return torch.bmm(self.dropout(self.attention_weights), values)
 
 '''正态分布，均值0, 标准差为1'''
-queries = torch.normal(0, 1, (2, 1, 2)) # 2个batch，每个batch有1个query，维度2
+#queries = torch.normal(0, 1, (2, 1, 2)) # 2个batch，每个batch有1个query，维度2
 keys = torch.normal(0, 1, (2, 10, 2)) # 2个batch，每个batch有10个key，维度2
 values = torch.normal(0, 1, (2, 10, 4)) # 2个batch，每个batch有10个value，维度4
 valid_lens = torch.tensor([2, 6]) # 第1个batch的有效长度为2，第2个为6
 
-attention = DotProductAttention(dropout=0.5)
+queries = torch.normal(0, 1, (2, 1, 20))
+attention = AdditiveAttention(num_hiddens=8, dropout=0.1)
 attention.eval()
 check_shape(attention(queries, keys, values, valid_lens), (2, 1, 4))
 
