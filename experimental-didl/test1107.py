@@ -43,11 +43,11 @@ def check_shape(a, shape):
 class AdditiveAttention(nn.Module):  #@save
     """Additive attention."""
     def __init__(self, num_hiddens, dropout, **kwargs):
-        super(AdditiveAttention, self).__init__(**kwargs)
-        self.W_k = nn.LazyLinear(num_hiddens, bias=False)
-        self.W_q = nn.LazyLinear(num_hiddens, bias=False)
-        self.w_v = nn.LazyLinear(1, bias=False)
-        self.dropout = nn.Dropout(dropout)
+        super(AdditiveAttention, self).__init__(**kwargs) #** kwargs：传递给父类的其他参数
+        self.W_k = nn.LazyLinear(num_hiddens, bias=False) #将Key映射到隐藏维度num_hiddens。LazyLinear会根据输入自动推断输入特征维数。
+        self.W_q = nn.LazyLinear(num_hiddens, bias=False) #将Query映射到相同的num_hiddens维度。
+        self.w_v = nn.LazyLinear(1, bias=False) #最后的线性层。它将加权后的特征压缩成一个标量（分数），作为注意力的原始得分。
+        self.dropout = nn.Dropout(dropout) #对注意力权重进行随机丢弃，防止过拟合。
 
     def forward(self, queries, keys, values, valid_lens):
         queries, keys = self.W_q(queries), self.W_k(keys)
@@ -71,7 +71,7 @@ keys = torch.normal(0, 1, (2, 10, 2)) # 2个batch，每个batch有10个key，维
 values = torch.normal(0, 1, (2, 10, 4)) # 2个batch，每个batch有10个value，维度4
 valid_lens = torch.tensor([2, 6]) # 第1个batch的有效长度为2，第2个为6
 
-queries = torch.normal(0, 1, (2, 1, 20))
+queries = torch.normal(0, 1, (2, 1, 20)) #queries 维度是 20，与 keys 的维度（2）不同！这正是加性注意力的优势：query 和 key 的维度可以不同
 attention = AdditiveAttention(num_hiddens=8, dropout=0.1)
 attention.eval()
 check_shape(attention(queries, keys, values, valid_lens), (2, 1, 4))
