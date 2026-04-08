@@ -51,18 +51,42 @@ class AdditiveAttention(nn.Module):  #@save
 
     def forward(self, queries, keys, values, valid_lens):
         queries, keys = self.W_q(queries), self.W_k(keys)
+        # 将queries和keys投影到相同的维度num_hiddens
+        # 投影后形状：
+        # queries: (batch_size, num_queries, num_hiddens)
+        # keys: (batch_size, num_keys, num_hiddens)
         # After dimension expansion, shape of queries: (batch_size, no. of
         # queries, 1, num_hiddens) and shape of keys: (batch_size, 1, no. of
         # key-value pairs, num_hiddens). Sum them up with broadcasting
         features = queries.unsqueeze(2) + keys.unsqueeze(1)
+        # 通过维度扩展实现所有query - key对的组合
+        # queries.unsqueeze(2)在索引2的位置插入新维度
+        # 形状变化：(2, 1, 8) → (2, 1, 1, 8) 含义：(batch, num_queries, 1, num_hiddens)
+        # keys.unsqueeze(1)在索引1的位置插入新维度
+        # 形状变化：(2, 10, 8) → (2, 1, 10, 8) 含义：(batch, 1, num_keys, num_hiddens)
+
+        #相加时触发广播机制，生成一个(batch, query_count, key_count, num_hiddens)的张量。这代表了每一个Query和每一个Key的特征结合。
+        #相加后features：(2, 1, 10, 8)这样每个query与每个key在最后一维（num_hiddens）上逐元素相加，实现了所有query - key对的组合。
+
         features = torch.tanh(features)
+        # tanh（双曲正切）：将输出压缩到[-1, 1]区间 引入非线性，增强表达能力
+
         # There is only one output of self.w_v, so we remove the last
         # one-dimensional entry from the shape. Shape of scores: (batch_size,
         # no. of queries, no. of key-value pairs)
         scores = self.w_v(features).squeeze(-1)
+        # w_v将最后一维从num_hiddens降维到1。
+        # squeeze(-1)移除最后一维（大小为1），得到(batch, query_count, key_count)的得分矩阵。 得到(2, 1, 10)
+
         self.attention_weights = masked_softmax(scores, valid_lens)
         # Shape of values: (batch_size, no. of key-value pairs, value
         # dimension)
+        # 通过之前的 masked_softmax 函数将得分转为概率，并屏蔽掉无效长度之外的部分。
+
+        # torch.bmm：批量矩阵乘法
+        # 注意力权重：(2, 1, 10)
+        # values：(2, 10, 4)
+        # 结果：(2, 1, 4) — 每个query的上下文向量
         return torch.bmm(self.dropout(self.attention_weights), values)
 
 '''正态分布，均值0, 标准差为1'''
