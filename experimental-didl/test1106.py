@@ -97,4 +97,6 @@ def show_heatmaps(matrices, xlabel, ylabel, titles=None, figsize=(2.5, 2.5),
 
 show_heatmaps(attention.attention_weights.reshape((1, 1, 2, 10)),
                   xlabel='Keys', ylabel='Queries')
+
+#plt.tight_layout()
 plt.show()
