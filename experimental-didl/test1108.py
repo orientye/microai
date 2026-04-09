@@ -1,5 +1,6 @@
 # https://en.d2l.ai/chapter_attention-mechanisms-and-transformers/attention-scoring-functions.html#exercises
 '''
+Q1:
 Implement distance-based attention by modifying the DotProductAttention code. Note that you only need the squared norms of the keys
  ||k_i||^2 for an efficient implementation.
 '''
