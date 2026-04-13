@@ -76,3 +76,42 @@ output, state = decoder(X, state)
 d2l.check_shape(output, (batch_size, num_steps, vocab_size))
 d2l.check_shape(state[0], (batch_size, num_steps, num_hiddens))
 d2l.check_shape(state[1][0], (batch_size, num_hiddens))
+
+'''training'''
+data = d2l.MTFraEng(batch_size=128)
+embed_size, num_hiddens, num_layers, dropout = 256, 256, 2, 0.2
+encoder = d2l.Seq2SeqEncoder(
+    len(data.src_vocab), embed_size, num_hiddens, num_layers, dropout)
+decoder = Seq2SeqAttentionDecoder(
+    len(data.tgt_vocab), embed_size, num_hiddens, num_layers, dropout)
+model = d2l.Seq2Seq(encoder, decoder, tgt_pad=data.tgt_vocab['<pad>'],
+                    lr=0.005)
+trainer = d2l.Trainer(max_epochs=30, gradient_clip_val=1, num_gpus=1)
+trainer.fit(model, data)
+
+engs = ['go .', 'i lost .', 'he\'s calm .', 'i\'m home .']
+fras = ['va !', 'j\'ai perdu .', 'il est calme .', 'je suis chez moi .']
+preds, _ = model.predict_step(
+    data.build(engs, fras), d2l.try_gpu(), data.num_steps)
+for en, fr, p in zip(engs, fras, preds):
+    translation = []
+    for token in data.tgt_vocab.to_tokens(p):
+        if token == '<eos>':
+            break
+        translation.append(token)
+    print(f'{en} => {translation}, bleu,'
+          f'{d2l.bleu(" ".join(translation), fr, k=2):.3f}')
+
+_, dec_attention_weights = model.predict_step(
+    data.build([engs[-1]], [fras[-1]]), d2l.try_gpu(), data.num_steps, True)
+attention_weights = torch.cat(
+    [step[0][0][0] for step in dec_attention_weights], 0)
+attention_weights = attention_weights.reshape((1, 1, -1, data.num_steps))
+
+# Plus one to include the end-of-sequence token
+d2l.show_heatmaps(
+    attention_weights[:, :, :, :len(engs[-1].split()) + 1].cpu(),
+    xlabel='Key positions', ylabel='Query positions')
+
+# plt.tight_layout()
+plt.show()
