@@ -1,22 +1,22 @@
 # https://en.d2l.ai/chapter_attention-mechanisms-and-transformers/bahdanau-attention.html#defining-the-decoder-with-attention
 
-import math
-import matplotlib.pyplot as plt
-import torch
-from torch import nn
 
+import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from d2l import torch as d2l
 
-class AttentionDecoder(d2l.Decoder):  #@save
+
+class AttentionDecoder(d2l.Decoder):  # @save
     """The base attention-based decoder interface."""
+
     def __init__(self):
         super().__init__()
 
     @property
     def attention_weights(self):
         raise NotImplementedError
+
 
 class Seq2SeqAttentionDecoder(AttentionDecoder):
     def __init__(self, vocab_size, embed_size, num_hiddens, num_layers,
@@ -64,6 +64,7 @@ class Seq2SeqAttentionDecoder(AttentionDecoder):
     @property
     def attention_weights(self):
         return self._attention_weights
+
 
 vocab_size, embed_size, num_hiddens, num_layers = 10, 8, 16, 2
 batch_size, num_steps = 4, 7
