@@ -43,6 +43,10 @@ class Seq2SeqAttentionDecoder(AttentionDecoder):
         # Shape of hidden_state: (num_layers, batch_size, num_hiddens)
         outputs, hidden_state = enc_outputs #outputs 是所有时间步的隐藏状态，hidden_state 是最后的隐藏状态
         return (outputs.permute(1, 0, 2), hidden_state, enc_valid_lens) # 注意力机制需要编码器的 outputs 作为 Key 和 Value，这里调整维度为 (batch, step, channel)
+        # outputs.permute(1, 0, 2)：将时间步维度与批量维度交换，变为(batch_size, num_steps, num_hiddens)，便于后续注意力计算。
+        # hidden_state：作为解码器GRU的初始隐藏状态。
+        # enc_valid_lens：编码器输入序列的有效长度（用于掩蔽填充位置），形状为(batch_size, )。
+
 
     def forward(self, X, state):
         # Shape of enc_outputs: (batch_size, num_steps, num_hiddens).
