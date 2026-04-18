@@ -19,22 +19,30 @@ class AttentionDecoder(d2l.Decoder):  # @save
 
 
 class Seq2SeqAttentionDecoder(AttentionDecoder):
+    """
+    vocab_size：目标语言词表大小。
+    embed_size：词嵌入维度。
+    num_hiddens：RNN隐藏层单元数。
+    num_layers：RNN层数。
+    dropout：丢弃率。
+    """
     def __init__(self, vocab_size, embed_size, num_hiddens, num_layers,
                  dropout=0):
         super().__init__()
-        self.attention = d2l.AdditiveAttention(num_hiddens, dropout)
-        self.embedding = nn.Embedding(vocab_size, embed_size)
+        self.attention = d2l.AdditiveAttention(num_hiddens, dropout) #创建加性注意力模块（Bahdanau注意力），输入查询和键的维度均为num_hiddens
+        self.embedding = nn.Embedding(vocab_size, embed_size) #将目标语言的词索引转换为稠密向量
+        # 使用GRU作为循环单元。输入特征是当前时间步的词嵌入与注意力上下文向量的拼接，因此输入维度为embed_size + num_hiddens；输出隐藏状态维度为num_hiddens。
         self.rnn = nn.GRU(
             embed_size + num_hiddens, num_hiddens, num_layers,
             dropout=dropout)
-        self.dense = nn.LazyLinear(vocab_size)
-        self.apply(d2l.init_seq2seq)
+        self.dense = nn.LazyLinear(vocab_size) #输出层，将GRU的输出映射到词表大小的logits。LazyLinear会在第一次前向传播时根据输入维度自动推断in_features。
+        self.apply(d2l.init_seq2seq) # 初始化模型参数
 
     def init_state(self, enc_outputs, enc_valid_lens):
         # Shape of outputs: (num_steps, batch_size, num_hiddens).
         # Shape of hidden_state: (num_layers, batch_size, num_hiddens)
-        outputs, hidden_state = enc_outputs
-        return (outputs.permute(1, 0, 2), hidden_state, enc_valid_lens)
+        outputs, hidden_state = enc_outputs #outputs 是所有时间步的隐藏状态，hidden_state 是最后的隐藏状态
+        return (outputs.permute(1, 0, 2), hidden_state, enc_valid_lens) # 注意力机制需要编码器的 outputs 作为 Key 和 Value，这里调整维度为 (batch, step, channel)
 
     def forward(self, X, state):
         # Shape of enc_outputs: (batch_size, num_steps, num_hiddens).
