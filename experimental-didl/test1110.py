@@ -91,22 +91,27 @@ d2l.check_shape(state[0], (batch_size, num_steps, num_hiddens))
 d2l.check_shape(state[1][0], (batch_size, num_hiddens))
 
 '''training'''
-data = d2l.MTFraEng(batch_size=128)
-embed_size, num_hiddens, num_layers, dropout = 256, 256, 2, 0.2
+data = d2l.MTFraEng(batch_size=128) # 加载英-法机器翻译数据集（Tatoeba 项目的句子对），并创建数据迭代器，批量大小为 128。
+embed_size, num_hiddens, num_layers, dropout = 256, 256, 2, 0.2 # 设置模型超参数：嵌入维度 256，隐藏单元数 256，2 层 GRU，丢弃率 0.2。
 encoder = d2l.Seq2SeqEncoder(
-    len(data.src_vocab), embed_size, num_hiddens, num_layers, dropout)
+    len(data.src_vocab), embed_size, num_hiddens, num_layers, dropout) # 编码器词表大小取自源语言词表长度
 decoder = Seq2SeqAttentionDecoder(
-    len(data.tgt_vocab), embed_size, num_hiddens, num_layers, dropout)
-model = d2l.Seq2Seq(encoder, decoder, tgt_pad=data.tgt_vocab['<pad>'],
-                    lr=0.005)
-trainer = d2l.Trainer(max_epochs=30, gradient_clip_val=1, num_gpus=1)
-trainer.fit(model, data)
+    len(data.tgt_vocab), embed_size, num_hiddens, num_layers, dropout) # 解码器词表大小取自目标语言词表长度
+model = d2l.Seq2Seq(encoder, decoder, tgt_pad=data.tgt_vocab['<pad>'], lr=0.005) #将编码器和解码器封装成 Seq2Seq 模型类，指定目标语言填充符索引，以便在计算损失时忽略填充位置。学习率设为 0.005。
+trainer = d2l.Trainer(max_epochs=30, gradient_clip_val=1, num_gpus=1) # 创建训练器：最多训练 30 个 epoch，梯度裁剪阈值为 1，使用 1 个 GPU。
+trainer.fit(model, data) # 开始训练循环
 
 engs = ['go .', 'i lost .', 'he\'s calm .', 'i\'m home .']
 fras = ['va !', 'j\'ai perdu .', 'il est calme .', 'je suis chez moi .']
+# 定义几个英文句子和对应的法语参考翻译。
+# data.build(engs, fras)：将字符串列表转换成模型输入所需的张量格式（添加 <bos>、<eos> 等特殊标记）。
+# model.predict_step(...)：执行预测（贪婪解码），返回预测的 token 序列和（如果要求）注意力权重。参数包括输入数据、设备、最大解码步数。
 preds, _ = model.predict_step(
     data.build(engs, fras), d2l.try_gpu(), data.num_steps)
 for en, fr, p in zip(engs, fras, preds):
+    # 遍历每个样本：
+    # 将预测的token索引序列p转换回单词列表，遇到 < eos > 停止。
+    # 打印英文原句、预测翻译、以及BLEU分数（与参考翻译比较，使用2 - gram）。
     translation = []
     for token in data.tgt_vocab.to_tokens(p):
         if token == '<eos>':
@@ -115,10 +120,10 @@ for en, fr, p in zip(engs, fras, preds):
     print(f'{en} => {translation}, bleu,'
           f'{d2l.bleu(" ".join(translation), fr, k=2):.3f}')
 
+# 仅对最后一个句子 "i'm home ." 进行预测，并额外要求返回解码器的注意力权重（True 参数）
 _, dec_attention_weights = model.predict_step(
     data.build([engs[-1]], [fras[-1]]), d2l.try_gpu(), data.num_steps, True)
-attention_weights = torch.cat(
-    [step[0][0][0] for step in dec_attention_weights], 0)
+attention_weights = torch.cat([step[0][0][0] for step in dec_attention_weights], 0)
 attention_weights = attention_weights.reshape((1, 1, -1, data.num_steps))
 
 # Plus one to include the end-of-sequence token
