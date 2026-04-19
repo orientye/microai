@@ -83,9 +83,9 @@ batch_size, num_steps = 4, 7
 encoder = d2l.Seq2SeqEncoder(vocab_size, embed_size, num_hiddens, num_layers)
 decoder = Seq2SeqAttentionDecoder(vocab_size, embed_size, num_hiddens,
                                   num_layers)
-X = torch.zeros((batch_size, num_steps), dtype=torch.long)
+X = torch.zeros((batch_size, num_steps), dtype=torch.long) #全零输入张量（模拟目标语言序列）
 state = decoder.init_state(encoder(X), None)
-output, state = decoder(X, state)
+output, state = decoder(X, state) #进行一次前向传播
 d2l.check_shape(output, (batch_size, num_steps, vocab_size))
 d2l.check_shape(state[0], (batch_size, num_steps, num_hiddens))
 d2l.check_shape(state[1][0], (batch_size, num_hiddens))
