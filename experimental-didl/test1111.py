@@ -21,8 +21,8 @@ class MultiHeadAttention(d2l.Module):  # @save
         # num_hiddens并不是单个注意力头的维度，而是整个多头注意力模块输入和输出的维度（相当于标准Transformer论文中的dmodel）。
         # 单个注意力头的维度实际上是num_hiddens / num_heads。
         '''
-        为什么输入 / 输出投影要保持num_hiddens
-        维度？
+        为什么输入/输出投影要保持num_hiddens 维度？
+        
         原因一：残差连接（Residual Connection）
         在Transformer架构中，多头注意力的输出会与原始输入queries进行相加（Add & Norm）。
         这就要求MultiHeadAttention的输出形状必须与输入queries的形状严格一致：
@@ -62,6 +62,11 @@ class MultiHeadAttention(d2l.Module):  # @save
             # times, then copy the next item, and so on
             valid_lens = torch.repeat_interleave(
                 valid_lens, repeats=self.num_heads, dim=0)
+        '''
+        torch.repeat_interleave 沿第0维（批次维度）将 valid_lens 中的每个元素重复 num_heads 次。
+        例如，如果原始 valid_lens 是 [3, 2]，且 num_heads=5，则会变成 [3,3,3,3,3, 2,2,2,2,2]。
+        这确保了掩码可以正确应用于 (batch_size * num_heads) 这个“批次”维度上的每个头
+        '''
 
         # Shape of output: (batch_size * num_heads, no. of queries,
         # num_hiddens / num_heads)
