@@ -18,6 +18,28 @@ class MultiHeadAttention(d2l.Module):  # @save
         self.W_k = nn.LazyLinear(num_hiddens, bias=bias)
         self.W_v = nn.LazyLinear(num_hiddens, bias=bias)
         self.W_o = nn.LazyLinear(num_hiddens, bias=bias)
+        # num_hiddens并不是单个注意力头的维度，而是整个多头注意力模块输入和输出的维度（相当于标准Transformer论文中的dmodel）。
+        # 单个注意力头的维度实际上是num_hiddens / num_heads。
+        '''
+        为什么输入 / 输出投影要保持num_hiddens
+        维度？
+        原因一：残差连接（Residual Connection）
+        在Transformer架构中，多头注意力的输出会与原始输入queries进行相加（Add & Norm）。
+        这就要求MultiHeadAttention的输出形状必须与输入queries的形状严格一致：
+        输入queries形状：(batch_size, num_queries, num_hiddens)
+        输出形状：(batch_size, num_queries, num_hiddens)
+        如果W_o输出的维度不是num_hiddens，后续的残差加法将无法执行。
+
+        原因二：多头维度的拆分是在投影之后进行的
+        流程如下：
+        线性投影（扩大 / 变换特征）：
+        self.W_q(queries)  # 输出形状：(batch, queries, num_hiddens)
+        分割成多头（通过reshape）：
+        X.reshape(X.shape[0], X.shape[1], self.num_heads, -1)
+        # 形状变为：(batch, queries, num_heads, num_hiddens/num_heads)
+        这种做法的好处是：所有头的参数共享在同一个大矩阵中计算（W_q是一个num_hiddens × num_hiddens的矩阵），而不是分别用
+        num_heads个独立的小矩阵去投影。这在中是极其高效且标准的实现方式。
+        '''
 
     def forward(self, queries, keys, values, valid_lens):
         # Shape of queries, keys, or values:
