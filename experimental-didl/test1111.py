@@ -71,10 +71,12 @@ class MultiHeadAttention(d2l.Module):  # @save
         # Shape of output: (batch_size * num_heads, no. of queries,
         # num_hiddens / num_heads)
         output = self.attention(queries, keys, values, valid_lens)
+        # 调用缩放点积注意力，得到多头注意力的原始输出，形状为(batch_size * num_heads, no.of queries, num_hiddens / num_heads)
         # Shape of output_concat: (batch_size, no. of queries, num_hiddens)
         output_concat = self.transpose_output(output)
+        # 执行与transpose_qkv 相反的操作，将输出形状恢复为(batch_size, no.of queries, num_hiddens)，为最终投影做准备
         return self.W_o(output_concat)
-
+        # 通过线性层 W_o 对拼接后的多头输出进行最终投影，得到最终的多头注意力输出，形状仍为 (batch_size, no. of queries, num_hiddens)
 
 @d2l.add_to_class(MultiHeadAttention)  # @save
 def transpose_qkv(self, X):
