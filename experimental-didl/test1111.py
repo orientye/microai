@@ -79,7 +79,7 @@ class MultiHeadAttention(d2l.Module):  # @save
         # 通过线性层 W_o 对拼接后的多头输出进行最终投影，得到最终的多头注意力输出，形状仍为 (batch_size, no. of queries, num_hiddens)
 
 @d2l.add_to_class(MultiHeadAttention)  # @save
-def transpose_qkv(self, X):
+def transpose_qkv(self, X): #维度变换
     """Transposition for parallel computation of multiple attention heads."""
     # Shape of input X: (batch_size, no. of queries or key-value pairs,
     # num_hiddens). Shape of output X: (batch_size, no. of queries or
@@ -91,10 +91,18 @@ def transpose_qkv(self, X):
     # Shape of output: (batch_size * num_heads, no. of queries or key-value
     # pairs, num_hiddens / num_heads)
     return X.reshape(-1, X.shape[2], X.shape[3])
-
+'''
+X = X.reshape(X.shape[0], X.shape[1], self.num_heads, -1)：
+将原始形状 (batch_size, seq_len, num_hiddens) 重塑为 (batch_size, seq_len, num_heads, head_dim)，其中 head_dim = num_hiddens / num_heads。
+X = X.permute(0, 2, 1, 3)：
+交换第1和第2维度，得到 (batch_size, num_heads, seq_len, head_dim)。这使得每个头的数据在维度上连续，便于独立计算。
+return X.reshape(-1, X.shape[2], X.shape[3])：
+将 batch_size 和 num_heads 合并为一个维度，最终得到 (batch_size * num_heads, seq_len, head_dim)。
+这样，DotProductAttention 就可以像处理一个大“批次”一样，并行计算所有头的注意力。
+'''
 
 @d2l.add_to_class(MultiHeadAttention)  # @save
-def transpose_output(self, X):
+def transpose_output(self, X): #逆向变换
     """Reverse the operation of transpose_qkv."""
     X = X.reshape(-1, self.num_heads, X.shape[1], X.shape[2])
     X = X.permute(0, 2, 1, 3)
