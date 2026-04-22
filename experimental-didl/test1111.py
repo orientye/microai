@@ -38,7 +38,7 @@ class MultiHeadAttention(d2l.Module):  # @save
         X.reshape(X.shape[0], X.shape[1], self.num_heads, -1)
         # 形状变为：(batch, queries, num_heads, num_hiddens/num_heads)
         这种做法的好处是：所有头的参数共享在同一个大矩阵中计算（W_q是一个num_hiddens × num_hiddens的矩阵），而不是分别用
-        num_heads个独立的小矩阵去投影。这在中是极其高效且标准的实现方式。
+        num_heads个独立的小矩阵去投影。这在 PyTorch 中是高效且标准的实现方式。
         '''
 
     def forward(self, queries, keys, values, valid_lens):
@@ -51,6 +51,11 @@ class MultiHeadAttention(d2l.Module):  # @save
         queries = self.transpose_qkv(self.W_q(queries))
         keys = self.transpose_qkv(self.W_k(keys))
         values = self.transpose_qkv(self.W_v(values))
+        '''
+        将线性变换后的查询张量送入transpose_qkv函数进行维度重排，以便并行计算多个注意力头。
+        输出的形状变为(batch_size * num_heads, num_queries, um_hiddens / num_heads)。
+        同样的操作分别应用于键和值张量
+        '''
 
         if valid_lens is not None:
             # On axis 0, copy the first item (scalar or vector) for num_heads
