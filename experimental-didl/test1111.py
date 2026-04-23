@@ -114,6 +114,7 @@ def transpose_output(self, X): #逆向变换
 
 
 num_hiddens, num_heads = 100, 5 # 设置隐藏层维度为 100，注意力头数为 5
+# num_hiddens：模型的总隐藏维度, 单个注意力头的维度实际上是 num_hiddens / num_heads
 attention = MultiHeadAttention(num_hiddens, num_heads, 0.5) # 实例化一个多头注意力模块，dropout 概率设为 0.5
 batch_size, num_queries, num_kvpairs = 2, 4, 6 # 设置批次大小为 2，查询数量为 4，键值对数量为 6
 valid_lens = torch.tensor([3, 2]) # 指定第一个样本的有效长度为 3，第二个样本的有效长度为 2
