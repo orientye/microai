@@ -104,16 +104,20 @@ return X.reshape(-1, X.shape[2], X.shape[3])：
 @d2l.add_to_class(MultiHeadAttention)  # @save
 def transpose_output(self, X): #逆向变换
     """Reverse the operation of transpose_qkv."""
+    # 接收注意力计算后的输出X，其形状为(batch_size * num_heads, num_queries, num_hiddens / num_heads)
     X = X.reshape(-1, self.num_heads, X.shape[1], X.shape[2])
+    # 将合并的批次维重新拆分回(batch_size, num_heads, num_queries, num_hiddens / num_heads)
     X = X.permute(0, 2, 1, 3)
+    # 交换维度1和维度2，得到形状(batch_size, num_queries, num_heads, num_hiddens / num_heads)
     return X.reshape(X.shape[0], X.shape[1], -1)
+    # 将最后两维合并，从而将各头的输出拼接在一起，最终形状恢复为 (batch_size, num_queries, num_hiddens)
 
 
-num_hiddens, num_heads = 100, 5
-attention = MultiHeadAttention(num_hiddens, num_heads, 0.5)
-batch_size, num_queries, num_kvpairs = 2, 4, 6
-valid_lens = torch.tensor([3, 2])
-X = torch.ones((batch_size, num_queries, num_hiddens))
-Y = torch.ones((batch_size, num_kvpairs, num_hiddens))
-d2l.check_shape(attention(X, Y, Y, valid_lens),
+num_hiddens, num_heads = 100, 5 # 设置隐藏层维度为 100，注意力头数为 5
+attention = MultiHeadAttention(num_hiddens, num_heads, 0.5) # 实例化一个多头注意力模块，dropout 概率设为 0.5
+batch_size, num_queries, num_kvpairs = 2, 4, 6 # 设置批次大小为 2，查询数量为 4，键值对数量为 6
+valid_lens = torch.tensor([3, 2]) # 指定第一个样本的有效长度为 3，第二个样本的有效长度为 2
+X = torch.ones((batch_size, num_queries, num_hiddens)) # 创建全 1 的查询张量，形状为 (2, 4, 100)
+Y = torch.ones((batch_size, num_kvpairs, num_hiddens)) # 创建全 1 的查询张量，形状为 (2, 6, 100)
+d2l.check_shape(attention(X, Y, Y, valid_lens), # 调用多头注意力模块
                 (batch_size, num_queries, num_hiddens))
