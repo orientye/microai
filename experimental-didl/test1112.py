@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from d2l import torch as d2l
+import d2l
+import numpy as np
 
 # num_hiddens: 模型的特征维度（隐藏层大小）。这里设为 100，意味着每个词或特征向量的长度是 100。
 # num_heads: 多头注意力的“头”数。这里设为 5，意味着 100 维的特征会被分成 5 组（每组 20 维）并行处理，最后再拼接起来
@@ -56,3 +58,10 @@ P = pos_encoding.P[:, :X.shape[1], :] #拿到计算好的位置矩阵
 d2l.plot(torch.arange(num_steps), P[0, :, 6:10].T, xlabel='Row (position)',
          figsize=(6, 2.5), legend=["Col %d" % d for d in torch.arange(6, 10)])
 plt.show()
+
+
+for i in range(8):
+    print(f'{i} in binary is {i:>03b}')
+P = np.expand_dims(np.expand_dims(P[0, :, :], 0), 0)
+d2l.show_heatmaps(P, xlabel='Column (encoding dimension)',
+    ylabel='Row (position)', figsize=(3.5, 4), cmap='Blues')
