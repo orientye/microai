@@ -62,6 +62,7 @@ plt.show()
 
 for i in range(8):
     print(f'{i} in binary is {i:>03b}')
-P = np.expand_dims(np.expand_dims(P[0, :, :], 0), 0)
+P = P[0, :, :].unsqueeze(0).unsqueeze(0)
+# P = np.expand_dims(np.expand_dims(P[0, :, :], 0), 0)
 d2l.show_heatmaps(P, xlabel='Column (encoding dimension)',
     ylabel='Row (position)', figsize=(3.5, 4), cmap='Blues')
