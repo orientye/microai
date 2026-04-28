@@ -61,6 +61,13 @@ plt.show()
 for i in range(8):
     print(f'{i} in binary is {i:>03b}')
 P = P[0, :, :].unsqueeze(0).unsqueeze(0)
+"""
+P[0, :, :]：从原本的三维张量 P 中取出第一个索引的内容。假设原 P 是 (Batch, Row, Col)，这步之后变成了 (Row, Col)，即一个二维矩阵。
+.unsqueeze(0)：在第 0 维增加一个维度。
+执行一次后，形状变为 (1, Row, Col)。
+执行第二次后，形状变为 (1, 1, Row, Col)。
+目的：很多深度学习框架（如 PyTorch）的可视化函数或卷积层要求输入必须是 4 维（Batch, Channel, Height, Width），即使 Batch 和 Channel 只有 1
+"""
 # P = np.expand_dims(np.expand_dims(P[0, :, :], 0), 0)
 d2l.show_heatmaps(P, xlabel='Column (encoding dimension)',
     ylabel='Row (position)', figsize=(3.5, 4), cmap='Blues')
