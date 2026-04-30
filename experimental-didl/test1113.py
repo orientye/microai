@@ -20,8 +20,11 @@ class PositionWiseFFN(nn.Module):  #@save
 
 ffn = PositionWiseFFN(4, 8)
 ffn.eval()
-result = ffn(torch.ones((2, 3, 4)))[0]
+result = ffn(torch.ones((2, 3, 5)))[0]
 
 print(f"输出形状: {result.shape}")
 print(f"输出内容:")
 print(result)
+
+print(f"dense1 权重形状: {ffn.dense1.weight.shape}")  # torch.Size([4, 5])
+print(f"dense2 权重形状: {ffn.dense2.weight.shape}")  # torch.Size([8, 4])
