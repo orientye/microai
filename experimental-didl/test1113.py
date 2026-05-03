@@ -28,3 +28,9 @@ print(result)
 
 print(f"dense1 权重形状: {ffn.dense1.weight.shape}")  # torch.Size([4, 5])
 print(f"dense2 权重形状: {ffn.dense2.weight.shape}")  # torch.Size([8, 4])
+
+ln = nn.LayerNorm(2)
+bn = nn.LazyBatchNorm1d()
+X = torch.tensor([[1, 2], [2, 3]], dtype=torch.float32)
+# Compute mean and variance from X in the training mode
+print('layer norm:', ln(X), '\nbatch norm:', bn(X))
