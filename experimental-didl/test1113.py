@@ -29,8 +29,8 @@ print(result)
 print(f"dense1 权重形状: {ffn.dense1.weight.shape}")  # torch.Size([4, 5])
 print(f"dense2 权重形状: {ffn.dense2.weight.shape}")  # torch.Size([8, 4])
 
-ln = nn.LayerNorm(2)
-bn = nn.LazyBatchNorm1d()
+ln = nn.LayerNorm(2) #创建一个层归一化层 对每个样本的所有特征进行归一化（横向归一化）
+bn = nn.LazyBatchNorm1d() #创建一个批归一化层（懒加载版本，不需要预先指定特征数，会在第一次前向传播时自动推断） 对每个特征在所有样本上进行归一化（纵向归一化）
 X = torch.tensor([[1, 2], [2, 3]], dtype=torch.float32)
 # Compute mean and variance from X in the training mode
 print('layer norm:', ln(X), '\nbatch norm:', bn(X))
