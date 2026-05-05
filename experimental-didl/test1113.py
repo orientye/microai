@@ -79,10 +79,10 @@ class TransformerEncoderBlock(nn.Module):  #@save
         #计算前馈网络：self.ffn(Y)将Y变换为相同形状。然后通过addnorm2：将前馈网络输出与Y做残差连接，再归一化。返回最终输出，形状不变。
         return self.addnorm2(Y, self.ffn(Y))
 
-X = torch.ones((2, 100, 24))
-valid_lens = torch.tensor([3, 2])
+X = torch.ones((2, 100, 24)) # 全一张量，表示 batch_size=2，序列长度=100，嵌入维度=24（即 num_hiddens=24）。
+valid_lens = torch.tensor([3, 2]) # 有效长度张量 [3, 2]，表示第一个样本只有前 3 个位置有效，第二个样本只有前 2 个位置有效，其余为填充。
 encoder_blk = TransformerEncoderBlock(24, 48, 8, 0.5)
-encoder_blk.eval()
+encoder_blk.eval() # 将模块切换到评估模式，主要影响 Dropout 和 BatchNorm 等层，例如 Dropout 在 eval 模式下不生效。
 d2l.check_shape(encoder_blk(X, valid_lens), X.shape)
 
 class TransformerEncoder(d2l.Encoder):  #@save
