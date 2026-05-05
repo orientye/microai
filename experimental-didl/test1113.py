@@ -71,7 +71,12 @@ class TransformerEncoderBlock(nn.Module):  #@save
         self.addnorm2 = AddNorm(num_hiddens, dropout)
 
     def forward(self, X, valid_lens):
+        """
+        首先计算自注意力：使用相同的X作为查询、键和值，valid_lens控制有效长度。输出形状与X相同(batch_size, seq_len, num_hiddens)。
+        然后通过addnorm1：将注意力输出与原始输入X做残差连接，然后进行层归一化和可能的dropout，输出Y。
+        """
         Y = self.addnorm1(X, self.attention(X, X, X, valid_lens))
+        #计算前馈网络：self.ffn(Y)将Y变换为相同形状。然后通过addnorm2：将前馈网络输出与Y做残差连接，再归一化。返回最终输出，形状不变。
         return self.addnorm2(Y, self.ffn(Y))
 
 X = torch.ones((2, 100, 24))
