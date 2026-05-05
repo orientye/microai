@@ -60,10 +60,14 @@ class TransformerEncoderBlock(nn.Module):  #@save
     def __init__(self, num_hiddens, ffn_num_hiddens, num_heads, dropout,
                  use_bias=False):
         super().__init__()
+        # 1. 多头自注意力层：学习序列内部的依赖关系
         self.attention = d2l.MultiHeadAttention(num_hiddens, num_heads,
                                                 dropout, use_bias)
+        # 2. 第一个残差连接和层归一化（用于注意力层之后）
         self.addnorm1 = AddNorm(num_hiddens, dropout)
+        # 3. 逐位前馈网络：对每个位置的特征进行非线性变换
         self.ffn = PositionWiseFFN(ffn_num_hiddens, num_hiddens)
+        # 4. 第二个残差连接和层归一化（用于前馈网络之后）
         self.addnorm2 = AddNorm(num_hiddens, dropout)
 
     def forward(self, X, valid_lens):
