@@ -91,8 +91,11 @@ class TransformerEncoder(d2l.Encoder):  #@save
                  num_heads, num_blks, dropout, use_bias=False):
         super().__init__()
         self.num_hiddens = num_hiddens
+        # 1. 词嵌入层：将单词索引转换为连续向量
         self.embedding = nn.Embedding(vocab_size, num_hiddens)
+        # 2. 位置编码：为向量注入位置信息（Transformer 本身不识别顺序）
         self.pos_encoding = d2l.PositionalEncoding(num_hiddens, dropout)
+        # 3. 堆叠多个编码器块
         self.blks = nn.Sequential()
         for i in range(num_blks):
             self.blks.add_module("block"+str(i), TransformerEncoderBlock(
@@ -102,14 +105,19 @@ class TransformerEncoder(d2l.Encoder):  #@save
         # Since positional encoding values are between -1 and 1, the embedding
         # values are multiplied by the square root of the embedding dimension
         # to rescale before they are summed up
+        # 第一步：词嵌入，并乘以特征维度的平方根进行缩放（为了和位置编码匹配）
         X = self.pos_encoding(self.embedding(X) * math.sqrt(self.num_hiddens))
+        # 准备存储每一层的注意力权重
         self.attention_weights = [None] * len(self.blks)
+        # 逐层通过编码器块
         for i, blk in enumerate(self.blks):
             X = blk(X, valid_lens)
+            # 保存该层计算出的注意力权重
             self.attention_weights[
                 i] = blk.attention.attention.attention_weights
         return X
 
+# 词汇表大小 200，特征/隐藏维度 24，前馈内部维度 48，头数 8，块数 2，dropout 0.5。
 encoder = TransformerEncoder(200, 24, 48, 8, 2, 0.5)
 d2l.check_shape(encoder(torch.ones((2, 100), dtype=torch.long), valid_lens),
                 (2, 100, 24))
