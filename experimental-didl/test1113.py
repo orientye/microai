@@ -223,6 +223,12 @@ state = [encoder_blk(X, valid_lens), valid_lens, [None]]
 d2l.check_shape(decoder_blk(X, state)[0], X.shape)
 
 class TransformerDecoder(d2l.AttentionDecoder):
+    """
+    self.embedding: 将词索引转换为词向量，并乘以 √dmodel进行缩放。
+    self.pos_encoding: 添加位置编码，赋予模型处理序列顺序的能力。
+    self.blks: 使用 nn.Sequential 堆叠 num_blks 个解码器块。
+    self.dense: 一个全连接层，将隐藏特征映射回词表大小（Vocab Size），用于预测下一个词。
+    """
     def __init__(self, vocab_size, num_hiddens, ffn_num_hiddens, num_heads,
                  num_blks, dropout):
         super().__init__()
@@ -236,9 +242,15 @@ class TransformerDecoder(d2l.AttentionDecoder):
                 num_hiddens, ffn_num_hiddens, num_heads, dropout, i))
         self.dense = nn.LazyLinear(vocab_size)
 
+    #初始化解码器状态，创建一个长度为层数的列表 [None] * num_blks，用来在推理阶段存储每一层的 KV 缓存。
     def init_state(self, enc_outputs, enc_valid_lens):
         return [enc_outputs, enc_valid_lens, [None] * self.num_blks]
 
+    """
+    self._attention_weights: 初始化一个二维列表，用于记录每一层的两种注意力权重（方便后续可视化）。
+    循环计算: 遍历所有块，逐层更新 X 和 state。
+    权重提取: 在循环中提取并保存 attention1 和 attention2 的权重。
+    """
     def forward(self, X, state):
         X = self.pos_encoding(self.embedding(X) * math.sqrt(self.num_hiddens))
         self._attention_weights = [[None] * len(self.blks) for _ in range (2)]
