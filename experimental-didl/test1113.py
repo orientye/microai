@@ -167,6 +167,21 @@ class TransformerDecoderBlock(nn.Module):
         self.ffn = PositionWiseFFN(ffn_num_hiddens, num_hiddens)
         self.addnorm3 = AddNorm(num_hiddens, dropout)
 
+    """
+    前向传播。
+    enc_outputs, enc_valid_lens: 从 state 中提取编码器的输出和有效长度。
+    KV 缓存逻辑:
+        如果 state[2][self.i] 为空，说明是训练阶段或预测的第一步，KV 值即为当前 X。
+        如果不为空，则将历史 KV 值与当前的 X 在时间维度（dim=1）上拼接，实现增量解码。
+    训练掩码:
+        if self.training: 生成自增序列 [1, 2, ..., num_steps] 作为有效长度，确保注意力机制实现“因果掩码”（即第t个词只能看到前t个词）。
+    计算流:
+        执行自注意力。
+        执行第一个 AddNorm。
+        执行交叉注意力（Query 来自解码器，Key/Value 来自编码器）。
+        执行第二个 AddNorm。
+        执行前馈网络并进行最后的 AddNorm。
+    """
     def forward(self, X, state):
         enc_outputs, enc_valid_lens = state[0], state[1]
         # During training, all the tokens of any output sequence are processed
@@ -196,6 +211,12 @@ class TransformerDecoderBlock(nn.Module):
         Z = self.addnorm2(Y, Y2)
         return self.addnorm3(Z, self.ffn(Z)), state
 
+"""
+decoder_blk = ...: 创建一个 24 隐藏单元、8 头的解码器块。
+X = torch.ones(...): 模拟一个 batch 为 2，序列长度 100，特征维度 24 的输入。
+state = [...]: 初始化状态，包含编码器输出、长度和用于 KV 缓存的空列表。
+d2l.check_shape(...): 验证输出形状是否与输入 X 一致。
+"""
 decoder_blk = TransformerDecoderBlock(24, 48, 8, 0.5, 0)
 X = torch.ones((2, 100, 24))
 state = [encoder_blk(X, valid_lens), valid_lens, [None]]
