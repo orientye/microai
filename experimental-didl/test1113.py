@@ -126,6 +126,37 @@ class TransformerDecoderBlock(nn.Module):
     # The i-th block in the Transformer decoder
     def __init__(self, num_hiddens, ffn_num_hiddens, num_heads, dropout, i):
         super().__init__()
+        """
+        self.i: 当前块在堆栈中的索引（用于缓存KV值）。
+        self.attention1: 掩蔽自注意力（Masked Self - Attention），防止模型看到未来信息。
+        self.addnorm1, 2, 3: 残差连接 + 层归一化（Add & Norm）。
+        self.attention2: 编码器 - 解码器交叉注意力（Encoder - Decoder Attention）。
+        self.ffn: 逐位前馈网络（Position - Wise Feed - Forward Network）。
+        
+        self.attention1 (掩蔽自注意力 - Masked Self-Attention)
+            Query, Key, Value 全来自解码器本身。
+            目的：让解码器在生成当前词时，回顾之前已经生成出来的词。
+            约束：它必须是“掩蔽”的。在训练时，它不能看到“未来”的词。
+        self.attention2 (编码器-解码器注意力 - Cross Attention)
+            Query 来自解码器，Key 和 Value 来自编码器的输出。
+            目的：让解码器在生成词时，去“查阅”输入句子（源语言）的信息。
+            联系：它是连接翻译源（如英文）和翻译目标（如中文）的桥梁。
+            
+        forward 函数里的调用：
+            # self-attention: 三个输入全是 key_values (即 X 的历史累积)
+            X2 = self.attention1(X, key_values, key_values, dec_valid_lens) 
+            # encoder-decoder attention: Query 是 Y，但 Key/Value 是 enc_outputs
+            Y2 = self.attention2(Y, enc_outputs, enc_outputs, enc_valid_lens)
+        
+        特性	attention1 (Self)	attention2 (Cross)
+        Query (Q)	    当前解码器的状态	上一层自注意力的输出
+        Key (K)	        解码器已生成的历史信息	编码器的最终输出
+        Value (V)	    解码器已生成的历史信息	编码器的最终输出
+        掩码 (Mask)	    dec_valid_lens (防止看未来)	enc_valid_lens (忽略填充字符)
+        
+        attention1 负责“内部消化”：处理生成过程中的序列依赖。
+        attention2 负责“外部对齐”：处理输入与输出之间的对应关系。
+        """
         self.i = i
         self.attention1 = d2l.MultiHeadAttention(num_hiddens, num_heads,
                                                  dropout)
