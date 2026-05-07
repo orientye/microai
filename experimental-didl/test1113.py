@@ -267,3 +267,30 @@ class TransformerDecoder(d2l.AttentionDecoder):
     @property
     def attention_weights(self):
         return self._attention_weights
+
+data = d2l.MTFraEng(batch_size=128)
+num_hiddens, num_blks, dropout = 256, 2, 0.2
+ffn_num_hiddens, num_heads = 64, 4
+encoder = TransformerEncoder(
+    len(data.src_vocab), num_hiddens, ffn_num_hiddens, num_heads,
+    num_blks, dropout)
+decoder = TransformerDecoder(
+    len(data.tgt_vocab), num_hiddens, ffn_num_hiddens, num_heads,
+    num_blks, dropout)
+model = d2l.Seq2Seq(encoder, decoder, tgt_pad=data.tgt_vocab['<pad>'],
+                    lr=0.001)
+trainer = d2l.Trainer(max_epochs=30, gradient_clip_val=1, num_gpus=1)
+trainer.fit(model, data)
+
+engs = ['go .', 'i lost .', 'he\'s calm .', 'i\'m home .']
+fras = ['va !', 'j\'ai perdu .', 'il est calme .', 'je suis chez moi .']
+preds, _ = model.predict_step(
+    data.build(engs, fras), d2l.try_gpu(), data.num_steps)
+for en, fr, p in zip(engs, fras, preds):
+    translation = []
+    for token in data.tgt_vocab.to_tokens(p):
+        if token == '<eos>':
+            break
+        translation.append(token)
+    print(f'{en} => {translation}, bleu,'
+          f'{d2l.bleu(" ".join(translation), fr, k=2):.3f}')
