@@ -1,0 +1,34 @@
+# Virtual environments (large, not useful for indexing)
+venv/
+.venv/
+env/
+
+# Local datasets / downloads (often large binaries)
+data/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE / OS noise
+.idea/
+.vs/
+.DS_Store
+Thumbs.db
+
+# Packaging / build outputs
+dist/
+build/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
