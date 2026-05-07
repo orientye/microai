@@ -1,7 +1,7 @@
 # https://en.d2l.ai/chapter_attention-mechanisms-and-transformers/transformer.html
 
-
 import math
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from torch import nn
@@ -294,3 +294,43 @@ for en, fr, p in zip(engs, fras, preds):
         translation.append(token)
     print(f'{en} => {translation}, bleu,'
           f'{d2l.bleu(" ".join(translation), fr, k=2):.3f}')
+
+_, dec_attention_weights = model.predict_step(
+    data.build([engs[-1]], [fras[-1]]), d2l.try_gpu(), data.num_steps, True)
+enc_attention_weights = torch.cat(model.encoder.attention_weights, 0)
+shape = (num_blks, num_heads, -1, data.num_steps)
+enc_attention_weights = enc_attention_weights.reshape(shape)
+d2l.check_shape(enc_attention_weights,
+                (num_blks, num_heads, data.num_steps, data.num_steps))
+
+d2l.show_heatmaps(
+    enc_attention_weights.cpu(), xlabel='Key positions',
+    ylabel='Query positions', titles=['Head %d' % i for i in range(1, 5)],
+    figsize=(7, 3.5))
+
+dec_attention_weights_2d = [head[0].tolist()
+                            for step in dec_attention_weights
+                            for attn in step for blk in attn for head in blk]
+dec_attention_weights_filled = torch.tensor(
+    pd.DataFrame(dec_attention_weights_2d).fillna(0.0).values)
+shape = (-1, 2, num_blks, num_heads, data.num_steps)
+dec_attention_weights = dec_attention_weights_filled.reshape(shape)
+dec_self_attention_weights, dec_inter_attention_weights = \
+    dec_attention_weights.permute(1, 2, 3, 0, 4)
+
+d2l.check_shape(dec_self_attention_weights,
+                (num_blks, num_heads, data.num_steps, data.num_steps))
+d2l.check_shape(dec_inter_attention_weights,
+                (num_blks, num_heads, data.num_steps, data.num_steps))
+
+d2l.show_heatmaps(
+    dec_self_attention_weights[:, :, :, :],
+    xlabel='Key positions', ylabel='Query positions',
+    titles=['Head %d' % i for i in range(1, 5)], figsize=(7, 3.5))
+
+d2l.show_heatmaps(
+    dec_inter_attention_weights, xlabel='Key positions',
+    ylabel='Query positions', titles=['Head %d' % i for i in range(1, 5)],
+    figsize=(7, 3.5))
+
+plt.show()
