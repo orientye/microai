@@ -2,5 +2,5 @@
 /.vs
 /data
 /venv
-/microai/__pycache__/
-/test/__pycache__/
+/**/__pycache__/
+/docs
