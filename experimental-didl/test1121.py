@@ -271,6 +271,7 @@ class TransformerDecoder(d2l.AttentionDecoder):
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _DATA_DIR = os.path.join(_HERE, 'data')
+_CKPT_PATH = os.path.join(_DATA_DIR, 'mt_seq2seq_eng_zh.pt')
 _CORPUS = os.path.join(_DATA_DIR, 'eng-zh.txt')
 with open(_CORPUS, encoding='utf-8') as _cf:
     _N = sum(1 for line in _cf if line.strip() and '\t' in line)
@@ -302,8 +303,68 @@ decoder = TransformerDecoder(
     num_blks, dropout)
 model = d2l.Seq2Seq(encoder, decoder, tgt_pad=data.tgt_vocab['<pad>'],
                     lr=0.001)
-trainer = d2l.Trainer(max_epochs=15, gradient_clip_val=1, num_gpus=0)
-trainer.fit(model, data)
+
+
+def _ckpt_meta():
+    return {
+        'corpus': os.path.basename(_CORPUS),
+        'n_lines': _N,
+        'num_train': data.num_train,
+        'num_val': data.num_val,
+        'num_steps': data.num_steps,
+        'min_freq': data.min_freq,
+        'src_vocab': len(data.src_vocab),
+        'tgt_vocab': len(data.tgt_vocab),
+        'num_hiddens': num_hiddens,
+        'num_blks': num_blks,
+        'ffn_num_hiddens': ffn_num_hiddens,
+        'num_heads': num_heads,
+    }
+
+
+def _materialize_lazy_layers(m, dat, dev):
+    """One forward so LazyLinear / lazy attention layers have parameters."""
+    m.eval()
+    batch = next(iter(dat.train_dataloader()))
+    batch = [d2l.to(t, dev) for t in batch]
+    with torch.no_grad():
+        m(batch[0], batch[1], batch[2])
+    m.train()
+
+
+_device = d2l.try_gpu()
+_meta = _ckpt_meta()
+_checkpoint_loaded = False
+
+if os.path.isfile(_CKPT_PATH):
+    try:
+        pack = torch.load(_CKPT_PATH, map_location=_device)
+    except Exception as e:
+        pack = None
+        print(f'Checkpoint read failed ({e}); will train from scratch.')
+    if pack is not None:
+        state = pack['state_dict'] if isinstance(pack, dict) and 'state_dict' in pack else pack
+        old_meta = pack.get('meta') if isinstance(pack, dict) else None
+        if old_meta == _meta:
+            try:
+                model.to(_device)
+                _materialize_lazy_layers(model, data, _device)
+                model.load_state_dict(state, strict=True)
+                _checkpoint_loaded = True
+                print(f'Loaded checkpoint (skipped training): {_CKPT_PATH}')
+            except Exception as e:
+                print(f'Checkpoint load failed ({e}); will train from scratch.')
+        else:
+            print('Checkpoint meta mismatch (corpus / vocab / hyperparams); retraining.')
+
+if not _checkpoint_loaded:
+    trainer = d2l.Trainer(max_epochs=15, gradient_clip_val=1, num_gpus=0)
+    trainer.fit(model, data)
+    model.to(_device)
+    torch.save({'state_dict': model.state_dict(), 'meta': _meta}, _CKPT_PATH)
+    print(f'Saved checkpoint: {_CKPT_PATH}')
+
+model.eval()
 
 engs = ['go .', 'i lost .', 'he\'s calm .', 'i\'m home .']
 zhs = ['走吧。', '我迷路了。', '他很冷静。', '我到家了。']
