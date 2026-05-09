@@ -271,7 +271,27 @@ class TransformerDecoder(d2l.AttentionDecoder):
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _DATA_DIR = os.path.join(_HERE, 'data')
-data = d2l.MTEngZh(batch_size=128, root=_DATA_DIR, filename='eng-zh.txt')
+_CORPUS = os.path.join(_DATA_DIR, 'eng-zh.txt')
+with open(_CORPUS, encoding='utf-8') as _cf:
+    _N = sum(1 for line in _cf if line.strip() and '\t' in line)
+if _N == 0:
+    raise FileNotFoundError(f'No valid tab-separated pairs in {_CORPUS}')
+if _N == 1:
+    _NUM_TRAIN, _NUM_VAL = 1, 0
+else:
+    _NUM_VAL = min(2000, max(1, _N // 10), _N - 1)
+    _NUM_TRAIN = _N - _NUM_VAL
+_MIN_FREQ = 2 if _N >= 1000 else 1
+
+data = d2l.MTEngZh(
+    batch_size=128,
+    num_steps=48,
+    num_train=_NUM_TRAIN,
+    num_val=_NUM_VAL,
+    root=_DATA_DIR,
+    filename='eng-zh.txt',
+    min_freq=_MIN_FREQ,
+)
 num_hiddens, num_blks, dropout = 256, 2, 0.2
 ffn_num_hiddens, num_heads = 64, 4
 encoder = TransformerEncoder(
@@ -282,7 +302,7 @@ decoder = TransformerDecoder(
     num_blks, dropout)
 model = d2l.Seq2Seq(encoder, decoder, tgt_pad=data.tgt_vocab['<pad>'],
                     lr=0.001)
-trainer = d2l.Trainer(max_epochs=30, gradient_clip_val=1, num_gpus=0)
+trainer = d2l.Trainer(max_epochs=15, gradient_clip_val=1, num_gpus=0)
 trainer.fit(model, data)
 
 engs = ['go .', 'i lost .', 'he\'s calm .', 'i\'m home .']
