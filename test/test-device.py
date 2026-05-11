@@ -1,6 +1,5 @@
 import torch
-
-import torch
+import sys
 
 # Check if CUDA (NVIDIA GPU) is available
 if torch.cuda.is_available():
@@ -17,8 +16,5 @@ else:
 # 查看安装类型
 print(f"安装位置: {torch.__file__}")
 print(f"PyTorch 版本: {torch.__version__}")
-
-# 检查库文件
-import sys
 print(f"Python 路径: {sys.executable}")
 print(f"Python 环境: {sys.prefix}")
