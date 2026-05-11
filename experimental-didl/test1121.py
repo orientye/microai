@@ -303,6 +303,13 @@ decoder = TransformerDecoder(
     num_blks, dropout)
 model = d2l.Seq2Seq(encoder, decoder, tgt_pad=data.tgt_vocab['<pad>'],
                     lr=0.001)
+# Training plots (matplotlib + IPython) dominate wall time in scripts; turn off.
+model.board.display = False
+# At most one loss aggregation per epoch (cheap bookkeeping vs default ~2/epoch).
+model.plot_train_per_epoch = 1
+model.plot_valid_per_epoch = 1
+
+_NUM_GPUS = min(1, d2l.num_gpus())
 
 
 def _ckpt_meta():
@@ -335,6 +342,7 @@ def _materialize_lazy_layers(m, dat, dev):
 _device = d2l.try_gpu()
 _meta = _ckpt_meta()
 _checkpoint_loaded = False
+print(f'Training will use num_gpus={_NUM_GPUS}, device={_device}')
 
 if os.path.isfile(_CKPT_PATH):
     try:
@@ -358,7 +366,7 @@ if os.path.isfile(_CKPT_PATH):
             print('Checkpoint meta mismatch (corpus / vocab / hyperparams); retraining.')
 
 if not _checkpoint_loaded:
-    trainer = d2l.Trainer(max_epochs=15, gradient_clip_val=1, num_gpus=0)
+    trainer = d2l.Trainer(max_epochs=15, gradient_clip_val=1, num_gpus=_NUM_GPUS)
     trainer.fit(model, data)
     model.to(_device)
     torch.save({'state_dict': model.state_dict(), 'meta': _meta}, _CKPT_PATH)
@@ -369,7 +377,7 @@ model.eval()
 engs = ['go .', 'i lost .', 'he\'s calm .', 'i\'m home .']
 zhs = ['走吧。', '我迷路了。', '他很冷静。', '我到家了。']
 preds, _ = model.predict_step(
-    data.build(engs, zhs), d2l.try_gpu(), data.num_steps)
+    data.build(engs, zhs), _device, data.num_steps)
 for en, zh, p in zip(engs, zhs, preds):
     translation = []
     for token in data.tgt_vocab.to_tokens(p):
@@ -381,7 +389,7 @@ for en, zh, p in zip(engs, zhs, preds):
           f'{d2l.bleu(" ".join(translation), ref, k=2):.3f}')
 
 _, dec_attention_weights = model.predict_step(
-    data.build([engs[-1]], [zhs[-1]]), d2l.try_gpu(), data.num_steps, True)
+    data.build([engs[-1]], [zhs[-1]]), _device, data.num_steps, True)
 enc_attention_weights = torch.cat(model.encoder.attention_weights, 0)
 shape = (num_blks, num_heads, -1, data.num_steps)
 enc_attention_weights = enc_attention_weights.reshape(shape)
