@@ -1,4 +1,6 @@
 import torch
+from torch import nn
+
 
 def demonstrate_mean_operation():
     # 1. 创建一个模拟的 3D 张量，例如形状为 (batch_size=2, seq_len=3, hidden_dim=4)
@@ -28,5 +30,37 @@ def demonstrate_mean_operation():
     print("减去均值后的每个元素（每组最内层数据的均值现在都变成了 0）：")
     print(x_centered)
 
+
+def demonstrate_mean_operation2():
+    print("=================================================")
+    torch.manual_seed(123)
+
+    # create 2 training examples with 5 dimensions (features) each
+    batch_example = torch.randn(2, 5)
+
+    layer = nn.Sequential(nn.Linear(5, 6), nn.ReLU())
+    out = layer(batch_example)
+    print(out)
+
+    mean = out.mean(dim=-1, keepdim=True)
+    var = out.var(dim=-1, keepdim=True)
+
+    print("Mean:\n", mean)
+    print("Variance:\n", var)
+
+    out_norm = (out - mean) / torch.sqrt(var)
+    print("Normalized layer outputs:\n", out_norm)
+
+    mean = out_norm.mean(dim=-1, keepdim=True)
+    var = out_norm.var(dim=-1, keepdim=True)
+    print("Mean:\n", mean)
+    print("Variance:\n", var)
+
+    torch.set_printoptions(sci_mode=False)
+    print("Mean:\n", mean)
+    print("Variance:\n", var)
+    print("=================================================")
+
 if __name__ == "__main__":
     demonstrate_mean_operation()
+    demonstrate_mean_operation2()
