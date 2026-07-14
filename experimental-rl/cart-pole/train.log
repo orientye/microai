@@ -1,0 +1,63 @@
+C:\orient\my\microai\experimental-rl\cart-pole\cartpole_train.py:181: UserWarning: FigureCanvasAgg is non-interactive, and thus cannot be shown
+  plt.show()
+开始训练 DQN Agent 玩 CartPole...
+Episode: 10/500 | 近10局均分: 24.1 | Epsilon: 1.00
+💾 保存新最佳模型（近10局均分 24.1）
+Episode: 20/500 | 近10局均分: 20.4 | Epsilon: 1.00
+Episode: 30/500 | 近10局均分: 28.7 | Epsilon: 1.00
+💾 保存新最佳模型（近10局均分 28.7）
+Episode: 40/500 | 近10局均分: 17.4 | Epsilon: 1.00
+Episode: 50/500 | 近10局均分: 18.1 | Epsilon: 0.98
+Episode: 60/500 | 近10局均分: 23.1 | Epsilon: 0.94
+Episode: 70/500 | 近10局均分: 21.3 | Epsilon: 0.90
+Episode: 80/500 | 近10局均分: 21.2 | Epsilon: 0.86
+Episode: 90/500 | 近10局均分: 24.0 | Epsilon: 0.82
+Episode: 100/500 | 近10局均分: 26.1 | Epsilon: 0.78
+Episode: 110/500 | 近10局均分: 24.7 | Epsilon: 0.74
+Episode: 120/500 | 近10局均分: 40.7 | Epsilon: 0.69
+💾 保存新最佳模型（近10局均分 40.7）
+Episode: 130/500 | 近10局均分: 57.1 | Epsilon: 0.61
+💾 保存新最佳模型（近10局均分 57.1）
+Episode: 140/500 | 近10局均分: 75.3 | Epsilon: 0.53
+💾 保存新最佳模型（近10局均分 75.3）
+Episode: 150/500 | 近10局均分: 99.8 | Epsilon: 0.44
+💾 保存新最佳模型（近10局均分 99.8）
+Episode: 160/500 | 近10局均分: 100.9 | Epsilon: 0.36
+💾 保存新最佳模型（近10局均分 100.9）
+Episode: 170/500 | 近10局均分: 253.1 | Epsilon: 0.22
+💾 保存新最佳模型（近10局均分 253.1）
+Episode: 180/500 | 近10局均分: 313.9 | Epsilon: 0.12
+💾 保存新最佳模型（近10局均分 313.9）
+Episode: 190/500 | 近10局均分: 221.7 | Epsilon: 0.08
+Episode: 200/500 | 近10局均分: 144.7 | Epsilon: 0.06
+Episode: 210/500 | 近10局均分: 185.1 | Epsilon: 0.05
+Episode: 220/500 | 近10局均分: 283.0 | Epsilon: 0.03
+Episode: 230/500 | 近10局均分: 272.1 | Epsilon: 0.02
+Episode: 240/500 | 近10局均分: 313.3 | Epsilon: 0.02
+Episode: 250/500 | 近10局均分: 227.8 | Epsilon: 0.01
+Episode: 260/500 | 近10局均分: 279.9 | Epsilon: 0.01
+Episode: 270/500 | 近10局均分: 246.3 | Epsilon: 0.01
+Episode: 280/500 | 近10局均分: 213.5 | Epsilon: 0.01
+Episode: 290/500 | 近10局均分: 218.0 | Epsilon: 0.01
+Episode: 300/500 | 近10局均分: 208.8 | Epsilon: 0.01
+Episode: 310/500 | 近10局均分: 229.0 | Epsilon: 0.01
+Episode: 320/500 | 近10局均分: 366.0 | Epsilon: 0.01
+💾 保存新最佳模型（近10局均分 366.0）
+Episode: 330/500 | 近10局均分: 120.1 | Epsilon: 0.01
+Episode: 340/500 | 近10局均分: 195.0 | Epsilon: 0.01
+Episode: 350/500 | 近10局均分: 345.0 | Epsilon: 0.01
+Episode: 360/500 | 近10局均分: 323.7 | Epsilon: 0.01
+Episode: 370/500 | 近10局均分: 188.1 | Epsilon: 0.01
+Episode: 380/500 | 近10局均分: 161.1 | Epsilon: 0.01
+Episode: 390/500 | 近10局均分: 161.4 | Epsilon: 0.01
+Episode: 400/500 | 近10局均分: 193.8 | Epsilon: 0.01
+Episode: 410/500 | 近10局均分: 182.6 | Epsilon: 0.01
+Episode: 420/500 | 近10局均分: 218.1 | Epsilon: 0.01
+Episode: 430/500 | 近10局均分: 336.4 | Epsilon: 0.01
+Episode: 440/500 | 近10局均分: 284.2 | Epsilon: 0.01
+Episode: 450/500 | 近10局均分: 317.6 | Epsilon: 0.01
+Episode: 460/500 | 近10局均分: 297.5 | Epsilon: 0.01
+Episode: 470/500 | 近10局均分: 264.6 | Epsilon: 0.01
+Episode: 480/500 | 近10局均分: 217.8 | Epsilon: 0.01
+Episode: 490/500 | 近10局均分: 141.1 | Epsilon: 0.01
+Episode: 500/500 | 近10局均分: 134.3 | Epsilon: 0.01
