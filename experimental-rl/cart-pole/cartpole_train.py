@@ -20,7 +20,8 @@ GAMMA = 0.99  # 折扣因子
 BATCH_SIZE = 64  # 每次批量训练的样本数
 MEMORY_SIZE = 10000  # 经验回放池容量
 MIN_MEMORY_SIZE = 1000  # 回放池最少样本数（达到后才开始训练）
-TARGET_UPDATE = 10  # 目标网络更新频率（回合）
+TARGET_UPDATE = 10  # 目标网络硬更新频率（回合），软更新开启后此项不再使用
+TAU = 0.005  # 目标网络软更新系数：每步 target = TAU*policy + (1-TAU)*target
 EPS_START = 1.0  # 初始随机探索率
 EPS_END = 0.01  # 最小随机探索率
 EPS_DECAY_STEPS = 5000  # 探索率按"训练步数"指数衰减的步数常数
@@ -97,9 +98,10 @@ class DQNAgent:
         # 计算当前 Q 值
         q_values = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
-        # 计算目标 Q 值
+        # 计算目标 Q 值 (Double DQN: policy_net 选动作, target_net 估值, 缓解过估)
         with torch.no_grad():
-            max_next_q_values = self.target_net(next_states).max(1)[0]
+            best_actions = self.policy_net(next_states).argmax(dim=1)
+            max_next_q_values = self.target_net(next_states).gather(1, best_actions.unsqueeze(1)).squeeze(1)
             expected_q_values = rewards + GAMMA * max_next_q_values * (1 - dones)
 
         # 计算损失并更新
@@ -111,6 +113,10 @@ class DQNAgent:
         # 按训练步数指数衰减探索率（比按回合衰减更平滑、更早进入利用阶段）
         self.step_count += 1
         self.epsilon = EPS_END + (EPS_START - EPS_END) * math.exp(-1.0 * self.step_count / EPS_DECAY_STEPS)
+
+        # 目标网络软更新：每步用小系数 TAU 平滑跟随策略网络，替代每 N 回合硬切换，减少训练抖动
+        for tp, p in zip(self.target_net.parameters(), self.policy_net.parameters()):
+            tp.data.copy_(TAU * p.data + (1.0 - TAU) * tp.data)
 
 
 # ----------------- 5. 训练主循环 -----------------
@@ -143,11 +149,8 @@ if __name__ == "__main__":
             if done:
                 break
 
-        # 探索率已在 train_step 中按步数衰减，这里无需再处理
+        # 探索率与目标网络均已在 train_step 中按步处理（软更新），这里无需再硬更新
         reward_history.append(episode_reward)
-
-        if episode % TARGET_UPDATE == 0:
-            agent.target_net.load_state_dict(agent.policy_net.state_dict())
 
         # 打印进度
         if (episode + 1) % 10 == 0:
