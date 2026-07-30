@@ -243,3 +243,7 @@ Replay + Target Network + Double DQN 主要就是针对这两点。
 6. 学习频率可配置（每 N 步学 1 次 / 每步学 K 次）  
 
 对 CartPole 来说，Prioritized Replay、Dueling、NoisyNet、多环境并行等收益有限、复杂度偏高，一般不必为这个例子上。换成 PPO 则是另一条算法路线，不属于「优化当前这段 DQN」。
+
+---
+
+策略梯度 / 简化 PPO 对照示例见 [`../cart-pole-ppo/`](../cart-pole-ppo/)。
