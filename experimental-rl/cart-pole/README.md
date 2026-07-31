@@ -27,14 +27,14 @@ CartPole-v1 是极简 MDP：小车上立一根杆，每步向左或向右推车�
 
 | 概念 | 本例取值 |
 |------|----------|
-| 状态 \(s\) | 4 维：`[车位置, 车速度, 杆角度, 杆角速度]` |
-| 动作 \(a\) | 2 个：`0` 左推，`1` 右推 |
-| 奖励 \(r\) | 杆仍立着 → 每步 `+1` |
+| 状态 `s` | 4 维：`[车位置, 车速度, 杆角度, 杆角速度]` |
+| 动作 `a` | 2 个：`0` 左推，`1` 右推 |
+| 奖励 `r` | 杆仍立着 → 每步 `+1` |
 | `terminated` | 杆偏角过大 / 车出界 |
 | `truncated` | 撑满 **500** 步（单局满分） |
 | 通关判定 | 近 10 局均分 ≥ **450**（仅打印提示，当前不早停） |
 
-`rl001.py` 用 `env.action_space.sample()` 随机动作，通常只能撑几十步。本例用神经网络近似 \(Q(s,a)\)，再贪心选动作。
+`rl001.py` 用 `env.action_space.sample()` 随机动作，通常只能撑几十步。本例用神经网络近似 `Q(s,a)`，再贪心选动作。
 
 ---
 
@@ -42,11 +42,11 @@ CartPole-v1 是极简 MDP：小车上立一根杆，每步向左或向右推车�
 
 经典 Q-learning 目标：
 
-\[
-Q(s,a) \leftarrow r + \gamma \max_{a'} Q(s', a')
-\]
+```text
+Q(s,a) ← r + γ · max_{a'} Q(s', a')
+```
 
-本例不用查表，而用 `QNet` 近似 \(Q\)，并叠加三项稳定技巧：
+本例不用查表，而用 `QNet` 近似 `Q`，并叠加三项稳定技巧：
 
 1. **经验回放（Replay Buffer）**  
    打断相邻样本的强相关，近似 i.i.d. 小批量采样。
@@ -55,7 +55,7 @@ Q(s,a) \leftarrow r + \gamma \max_{a'} Q(s', a')
    用较慢更新的 `target_net` 估计下一状态价值，避免「用正在变化的网络当标签」。
 
 3. **Double DQN**  
-   用 `policy_net` **选择** \(a^* = \arg\max_a Q_{\text{policy}}(s', a)\)，用 `target_net` **估计** \(Q_{\text{target}}(s', a^*)\)，减轻 \(\max\) 带来的过估计。
+   用 `policy_net` **选择** `a* = argmax_a Q_policy(s', a)`，用 `target_net` **估计** `Q_target(s', a*)`，减轻 `max` 带来的过估计。
 
 数据流示意：
 
@@ -127,9 +127,9 @@ for tp, p in zip(self.target_net.parameters(), self.policy_net.parameters()):
 
 探索率按 **成功执行的 `train_step` 次数**（不是按 episode，也不是按环境步）指数衰减：
 
-\[
-\varepsilon = \varepsilon_{\text{end}} + (\varepsilon_{\text{start}} - \varepsilon_{\text{end}})\, e^{-t / \text{EPS\_DECAY\_STEPS}}
-\]
+```text
+ε = ε_end + (ε_start − ε_end) · exp(−t / EPS_DECAY_STEPS)
+```
 
 本例：`1.0 → 0.01`，衰减常数 `5000`。  
 热身阶段（buffer < 1000）`train_step` 直接 return，此时 **ε 不衰减、target 也不软更新**，ε 一直保持 `1.0`。比「每回合降一点」更平滑，也更早进入利用阶段。
@@ -192,9 +192,9 @@ for tp, p in zip(self.target_net.parameters(), self.policy_net.parameters()):
 
 | | `rl001.py` | `cartpole_train.py` |
 |--|-----------|---------------------|
-| 策略 | `action_space.sample()` | 学出的 \(Q\) + ε-greedy |
+| 策略 | `action_space.sample()` | 学出的 `Q` + ε-greedy |
 | 记忆 | 无 | ReplayBuffer |
-| 学习信号 | 无 | \(r + \gamma Q_{\text{target}}(s', a^*)\) |
+| 学习信号 | 无 | `r + γ · Q_target(s', a*)` |
 | 期望表现 | 几十步 | 接近 500 步 |
 
 CartPole 难的不是动力学本身，而是：
