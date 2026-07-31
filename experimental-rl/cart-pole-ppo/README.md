@@ -31,14 +31,14 @@ CartPole-v1 是极简 MDP：小车上立一根杆，每步向左或向右推车�
 
 | 概念 | 本例取值 |
 |------|----------|
-| 状态 \(s\) | 4 维：`[车位置, 车速度, 杆角度, 杆角速度]` |
-| 动作 \(a\) | 2 个：`0` 左推，`1` 右推 |
-| 奖励 \(r\) | 杆仍立着 → 每步 `+1` |
+| 状态 `s` | 4 维：`[车位置, 车速度, 杆角度, 杆角速度]` |
+| 动作 `a` | 2 个：`0` 左推，`1` 右推 |
+| 奖励 `r` | 杆仍立着 → 每步 `+1` |
 | `terminated` | 杆偏角过大 / 车出界 |
 | `truncated` | 撑满 **500** 步（单局满分） |
 | 通关判定 | 近 10 局均分 ≥ **450**（仅打印提示，**不早停**） |
 
-与 [`../cart-pole/`](../cart-pole/) 的 Double DQN 示例对照：同一环境、同一通关阈值，但学习范式从 **值函数 + ε-greedy** 换成 **直接学策略 \(\pi(a|s)\)**。CartPole 环境细节见 [`../cart-pole/README.md`](../cart-pole/README.md) 第 1 节。
+与 [`../cart-pole/`](../cart-pole/) 的 Double DQN 示例对照：同一环境、同一通关阈值，但学习范式从 **值函数 + ε-greedy** 换成 **直接学策略 `π(a|s)`**。CartPole 环境细节见 [`../cart-pole/README.md`](../cart-pole/README.md) 第 1 节。
 
 ---
 
@@ -52,7 +52,7 @@ CartPole-v1 是极简 MDP：小车上立一根杆，每步向左或向右推车�
 |----------|----------|
 | 单头网络输出 logits + value | **分离** `Actor` / `Critic`，经 `ActorCritic` 组合 |
 | ReLU 隐层 | **Tanh** 64×64 MLP |
-| 全轨迹 Monte Carlo return | **GAE(\(\lambda=0.95\))** 优势 + bootstrap |
+| 全轨迹 Monte Carlo return | **GAE(λ=0.95)** 优势 + bootstrap |
 | 每批数据更新 1 次 | 同一 rollout **重复 `UPDATE_EPOCHS=4` 次** |
 | 仅 policy gradient | **Clip surrogate** + **value MSE** + **entropy bonus** |
 | 无梯度裁剪 | **`clip_grad_norm_(..., 0.5)`** |
@@ -88,14 +88,14 @@ CartPole-v1 是极简 MDP：小车上立一根杆，每步向左或向右推车�
 
 ### 2.3 GAE 与 bootstrap
 
-对每个 rollout 末尾，用**当前状态**的 \(V(s_{\text{last}})\) 作为 bootstrap：
+对每个 rollout 末尾，用**当前状态**的 `V(s_last)` 作为 bootstrap：
 
-\[
-\delta_t = r_t + \gamma V_{t+1}(1-\text{done}_t) - V_t,\quad
-A_t = \delta_t + \gamma\lambda(1-\text{done}_t)A_{t+1}
-\]
+```text
+δ_t = r_t + γ · V_{t+1} · (1 − done_t) − V_t
+A_t = δ_t + γλ · (1 − done_t) · A_{t+1}
+```
 
-\(\text{returns} = A + V\)，作为 Critic 的回归目标。  
+`returns = A + V`，作为 Critic 的回归目标。  
 `done = terminated or truncated`：episode 结束时 GAE 不再向未来 bootstrap（与 DQN 侧相同的简化处理）。
 
 ### 2.4 PPO 损失（代码对应）
@@ -122,7 +122,7 @@ loss = policy_loss + VF_COEF * value_loss - ENT_COEF * entropy
 | 模块 | 结构 | 输出 |
 |------|------|------|
 | `Actor` | `4 → 64 → Tanh → 64 → Tanh → 2` | 动作 logits（未 softmax，由 `Categorical` 处理） |
-| `Critic` | `4 → 64 → Tanh → 64 → Tanh → 1` | 标量 \(V(s)\) |
+| `Critic` | `4 → 64 → Tanh → 64 → Tanh → 1` | 标量 `V(s)` |
 | `ActorCritic` | 组合上述两者 | `forward` 返回 `(logits, value)`；`act` 采样动作并返回 `(action, log_prob, value)` |
 
 训练时 `act()` 在 `no_grad` 下采样；测试时 `ppo_test.py` 对 logits 取 **`argmax`（贪心）**，不再采样。
@@ -199,7 +199,7 @@ for update in 1..MAX_UPDATES:
    初始 Actor 近似均匀随机，Critic 未校准；单局步数低，reward 曲线波动大。
 
 2. **Critic 跟上 + 策略微调**  
-   GAE 依赖 \(V(s)\) 质量；value MSE 下降后，advantage 信号变可靠，clip 内的 policy 更新开始「推杆方向」。
+   GAE 依赖 `V(s)` 质量；value MSE 下降后，advantage 信号变可靠，clip 内的 policy 更新开始「推杆方向」。
 
 3. **局分爬升**  
    无需 ε-greedy：采样本身带随机性，entropy 进一步维持探索。近 10 局均分从几十 → 一两百 → 400+。
@@ -217,10 +217,10 @@ for update in 1..MAX_UPDATES:
 | | Double DQN (`cart-pole`) | 简化 PPO（本目录） |
 |--|--------------------------|-------------------|
 | 范式 | Off-policy 值函数 | On-policy 策略梯度 |
-| 网络 | 单 `QNet`，输出 \(Q(s,a)\) | 分离 Actor + Critic |
-| 动作选择 | ε-greedy on Q | 训练：\( \pi \) 采样；测试：argmax |
+| 网络 | 单 `QNet`，输出 `Q(s,a)` | 分离 Actor + Critic |
+| 动作选择 | ε-greedy on Q | 训练：`π` 采样；测试：argmax |
 | 数据 | ReplayBuffer 1 万条 | 每 update 仅最近 128 步 |
-| 目标 / 优势 | TD：\(r + \gamma Q_{\text{target}}(s',a^*)\) | GAE + returns |
+| 目标 / 优势 | TD：`r + γ · Q_target(s', a*)` | GAE + returns |
 | 稳定手段 | Target net 软更新 + Double Q | PPO clip + 多 epoch + grad clip |
 | 探索 | ε 衰减 | 随机采样 + entropy bonus |
 | 更新触发 | 每环境步（池满后） | 每 128 步一批，批内 4 epoch |
