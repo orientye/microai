@@ -194,8 +194,8 @@
 |1
 |0
 |`[2.0, 3.0]`
-|`[4.0, 1.0]` → 选 0
-|`[3.5, 2.0]`
+|`[5.0, 1.0]` → 选 0
+|`[3.0, 4.5]`
 
 |1
 |0（左推）
@@ -212,16 +212,21 @@
 
 *Double DQN 目标*
 
-* i=0：policy 选 stem:[a^*=0]，target 估 stem:[3.5] → stem:[y_0=1+0.99\times 3.5=4.465]
+* i=0：policy 选 stem:[a^*=0]，target 估 stem:[3.0] → stem:[y_0=1+0.99\times 3.0=3.97]
 * i=1：`done=1` → stem:[y_1=1]（切断 bootstrap）
 
-若裸 DQN 用同一网络 `max([4,1])=4`，则 stem:[y_0=4.96]，更容易过估计。
+*同批数字对照（勿把「裸」与「经典」混为一谈）*
 
-*损失（MSE mean 量级）*
+* *经典 target-max*（选估都用 target）：stem:[y_0=1+0.99\times\max(3.0,4.5)=5.455] — 本例 policy 的 argmax 与 target 的 argmax *不一致*，故与 Double 拉开
+* *单网 max*（无 target / 选估同一套在线网）：stem:[y_0=1+0.99\times\max(5.0,1.0)=5.95] — 更易虚高
+
+（若 policy 与 target 的 argmax 碰巧相同，Double 与经典 target-max 的 stem:[y] 会相等；要演示过估计差异，需像上表这样分开。）
+
+*损失（MSE mean 量级，按 Double 的 stem:[y]）*
 
 [stem]
 ++++
-L_{\mathrm{mean}} = \frac{(3.0-4.465)^2+(1.5-1)^2}{2} \approx 1.20
+L_{\mathrm{mean}} = \frac{(3.0-3.97)^2+(1.5-1)^2}{2} \approx 0.60
 ++++
 
 （与 PyTorch `mse_loss` 默认 `mean` 一致；有的教材在 MSE 前写 stem:[1/2]，仅差常数倍，不影响 Adam 方向。）
@@ -229,6 +234,12 @@ L_{\mathrm{mean}} = \frac{(3.0-4.465)^2+(1.5-1)^2}{2} \approx 1.20
 反传只更新 `policy_net`：样本 0 抬高「右推」的 Q，样本 1 压低「左推」的 Q；随后 soft update 渗一点进 `target_net`。
 
 *一句话：* `train_step` = 用慢半拍的价值表当老师，纠正当前表对已走动作的打分；探索在 `choose_action`，不在这一步。
+
+[NOTE]
+====
+本仓库 DQN / PPO 均写 `done = terminated or truncated`，再用 `(1-done)` 关掉 bootstrap。 +
+对 *terminated*（杆倒 / 车出界）正确；对 *truncated*（撑满 500 步）偏保守——杆其实还立着，严格 MDP 仍应 bootstrap。实现简单，会略低估「满分局」的后续价值。详见 link:cart-pole/README.md[`cart-pole/README.md`]。
+====
 
 == 2. Soft Update 为何比硬拷更稳
 
@@ -268,7 +279,7 @@ stem:[\tau=0.005] 时，从 0 追到约 0.5 大约要 stem:[\ln 0.5/\ln 0.995\ap
 
 *本节一句话：* 杆很晚才倒，早期那一推也要被追责——但 DQN、REINFORCE、PPO 追责的方式不一样。
 
-设定：第 80 步倒下；关心第 10 步「右推」。
+设定：人话「第 80 步倒下」↔ 转移下标 stem:[t=79]（0-based，下图同）；关心「第 10 步」↔ stem:[t=10] 的「右推」。
 
 === 3.1 DQN：TD 骨牌，不是一次 stem:[\gamma^{70}]
 
@@ -281,6 +292,7 @@ Q(s_t,a_t)\leftarrow r_t+\gamma Q_{\mathrm{target}}(s_{t+1},a^*)
 
 终局步 `done=1` → 目标纯 stem:[r]。stem:[Q(s_{79},\cdot)] 变差后，再抽到 stem:[t=78] 时目标跟着降，沿时间反向渗。
 理论深度约 70 次 bootstrap；stem:[\gamma^{70}\approx 0.99^{70}\approx 0.49]。早期动作信号弱，还依赖 Replay 反复抽到链上的转移。
+（本仓库把 `truncated` 也标成 `done`，满分截断处同样切断；见 §1 末注。）
 
 === 3.2 REINFORCE：整局标量一次乘上
 
@@ -329,14 +341,20 @@ Double：在线网选 stem:[a^*]，目标网估值。
 |===
 |变体 |选 stem:[a^*] |估值网
 
-|裸 / 经典
-|policy 或 target 的 argmax
-|与选动作同一套（或仅 policy）
+|单网 max（裸）
+|`policy.argmax`
+|同一 `policy`（无独立 target，或选估都不拆）
+
+|经典 target-max
+|`target.argmax`
+|同一 `target`（有慢更新老师，但仍是 max 耦合）
 
 |Double（现状）
 |`policy.argmax`
 |`target.gather`
 |===
+
+§1 手推里三者 stem:[y] 分别为 stem:[5.95] / stem:[5.455] / stem:[3.97]，可对照本节读图。
 
 建议记录：`Q_mean`、`policy.max - target.max`、近 10 局回报、可选 Bellman 残差。
 
@@ -522,6 +540,11 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 
 采集时的 stem:[V] 已固定 → 整个 `UPDATE_EPOCHS` 内 stem:[A]、stem:[\hat{R}] 当常数标签。
 
+[NOTE]
+====
+同文件里的 `compute_returns`（折扣回报、遇 `done` 截断）*未*被训练主循环调用；仅保留供理解与 `test_ppo_helpers.py`。训练标签来自 `compute_gae` 返回的 stem:[A] 与 stem:[\hat{R}=A+V]，不是 Monte Carlo return。
+====
+
 === 8.2 `ppo_update` 每个 epoch
 
 [cols="2,3",options="header"]
@@ -619,4 +642,4 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 
 *已有 RL 基础可直接：* §1 → §7 / §8，或 §3 → §6。
 
-可选后续（未写入代码）：纯 REINFORCE 一页纸脚本；裸 DQN vs Double 的 `Q_mean` 消融曲线。
+扩展实验（仓库暂无脚本）：纯 REINFORCE 一页纸脚本；单网 max / 经典 target-max / Double 的 `Q_mean` 消融曲线（菜单见 §4）。
