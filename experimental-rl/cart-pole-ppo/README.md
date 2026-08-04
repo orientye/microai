@@ -277,4 +277,4 @@ CartPole 上两者都能收敛；PPO 更贴近「直接优化期望回报」的�
 
 对 CartPole 而言，GAE、分离网络、clip、多 epoch 已是「能训起来」的最小增量集；再堆 IMPALA、LSTM、PopArt 等属于过度工程。若只需对比算法思想，[`../cart-pole/`](../cart-pole/) 的 DQN 与本目录 PPO 已足够。
 
-公式推导、信用分配、与 DQN `train_step` 的逐行对照见 [`../cart-pole-deep-dive.adoc`](../cart-pole-deep-dive.adoc)（AsciiDoc，需 AsciiDoc 预览以渲染公式）。
+公式推导、信用分配、与 DQN `train_step` 的逐行对照见 [`../cart-pole-deep-dive.adoc`](../cart-pole-deep-dive.adoc)（AsciiDoc）。零基础请先读文中 **「新手速通」**。

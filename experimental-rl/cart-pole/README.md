@@ -248,4 +248,4 @@ Replay + Target Network + Double DQN 主要就是针对这两点。
 
 策略梯度 / 简化 PPO 对照示例见 [`../cart-pole-ppo/`](../cart-pole-ppo/)。
 
-公式推导、信用分配、`train_step` / PPO 逐行精读见 [`../cart-pole-deep-dive.adoc`](../cart-pole-deep-dive.adoc)（AsciiDoc，需 AsciiDoc 预览以渲染公式）。
+公式推导、信用分配、`train_step` / PPO 逐行精读见 [`../cart-pole-deep-dive.adoc`](../cart-pole-deep-dive.adoc)（AsciiDoc）。零基础请先读文中 **「新手速通」** 再进后面章节。
