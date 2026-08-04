@@ -1,0 +1,459 @@
+= CartPole RL 深度解析：DQN ↔ PPO
+:toc:
+:toclevels: 2
+:stem: latexmath
+:icons: font
+:sectanchors:
+
+本文把 `cart-pole/`（Double DQN）与 `cart-pole-ppo/`（简化 PPO）对照着挖透，覆盖：
+
+* 手推一轮学习步的数值直觉
+* Soft Update vs 硬拷贝
+* 信用分配（第 80 步倒地 → 第 10 步如何背锅）
+* 过估计与 Double DQN 实验菜单
+* 三种损失的梯度语义
+* 公式推导 + `train_step` / `compute_gae` / `ppo_update` 逐行精读
+
+[NOTE]
+====
+本文件为 *AsciiDoc*（`.adoc`）。请用 AsciiDoc 预览（如 VS Code / Cursor 的 AsciiDoc 扩展）打开；文档属性 `:stem: latexmath` 启用公式。
+====
+
+== 配套代码
+
+[cols="1,2,2",options="header"]
+|===
+|目录 |算法 |入门文档
+
+|link:cart-pole/[`cart-pole/`]
+|Double DQN + 软更新 + Replay
+|link:cart-pole/README.md[`cart-pole/README.md`]
+
+|link:cart-pole-ppo/[`cart-pole-ppo/`]
+|Actor-Critic + GAE + PPO clip
+|link:cart-pole-ppo/README.md[`cart-pole-ppo/README.md`]
+
+|link:rl001.py[`rl001.py`]
+|随机策略基线
+|—
+|===
+
+== 1. 手推一轮 DQN `train_step`
+
+对应 link:cart-pole/cartpole_train.py[`cartpole_train.py`] 中 `DQNAgent.train_step`。
+
+假设 `BATCH_SIZE=2`，`GAMMA=0.99`：
+
+[cols="1,2,1,1,2,2,2",options="header"]
+|===
+|i |已执行动作 stem:[a] |stem:[r] |done |policy stem:[Q(s)] |policy stem:[Q(s')] |target stem:[Q(s')]
+
+|0
+|1（右推）
+|1
+|0
+|`[2.0, 3.0]`
+|`[4.0, 1.0]` → 选 0
+|`[3.5, 2.0]`
+
+|1
+|0（左推）
+|1
+|1（杆倒）
+|`[1.5, 0.8]`
+|任意
+|任意
+|===
+
+*当前 Q（gather 真实动作）*
+
+* i=0 → stem:[Q=3.0]；i=1 → stem:[Q=1.5]
+
+*Double DQN 目标*
+
+* i=0：policy 选 stem:[a^*=0]，target 估 stem:[3.5] → stem:[y_0=1+0.99\times 3.5=4.465]
+* i=1：`done=1` → stem:[y_1=1]（切断 bootstrap）
+
+若裸 DQN 用同一网络 `max([4,1])=4`，则 stem:[y_0=4.96]，更容易过估计。
+
+*损失（MSE mean 量级）*
+
+[stem]
+++++
+L \approx \frac{1}{2}\left[(3.0-4.465)^2+(1.5-1)^2\right]\approx 1.20
+++++
+
+反传只更新 `policy_net`：样本 0 抬高「右推」的 Q，样本 1 压低「左推」的 Q；随后 soft update 渗一点进 `target_net`。
+
+*一句话：* `train_step` = 用慢半拍的价值表当老师，纠正当前表对已走动作的打分；探索在 `choose_action`，不在这一步。
+
+== 2. Soft Update 为何比硬拷更稳
+
+每步：
+
+[stem]
+++++
+\theta^{-} \leftarrow \tau\theta + (1-\tau)\theta^{-},\quad \tau=0.005
+++++
+
+[cols="1,2,2",options="header"]
+|===
+| |硬更新（每 N 局整表拷贝） |软更新（本仓库现状）
+
+|标签变化
+|阶跃猛跳
+|连续挪动
+
+|TD 目标
+|平台期稳、切换瞬间抖
+|始终慢半拍、更平滑
+
+|过估计耦合
+|切换后老师突然变「激进学生」
+|老师是近期 stem:[\theta] 的 EMA
+
+|调参
+|要选 `TARGET_UPDATE`
+|`TAU` = 跟踪速度
+|===
+
+stem:[\tau=0.005] 时，从 0 追到约 0.5 大约要 stem:[\ln 0.5/\ln 0.995\approx 138] 步。代价是略慢；CartPole 上通常值得。`TARGET_UPDATE` 在训练脚本里已是遗留常量。
+
+== 3. 信用分配：第 80 步倒地，第 10 步怎么背锅？
+
+设定：第 80 步倒下；关心第 10 步「右推」。
+
+=== 3.1 DQN：TD 骨牌，不是一次 stem:[\gamma^{70}]
+
+每次更新只改当前转移：
+
+[stem]
+++++
+Q(s_t,a_t)\leftarrow r_t+\gamma Q_{\mathrm{target}}(s_{t+1},a^*)
+++++
+
+终局步 `done=1` → 目标纯 stem:[r]。stem:[Q(s_{79},\cdot)] 变差后，再抽到 stem:[t=78] 时目标跟着降，沿时间反向渗。
+理论深度约 70 次 bootstrap；stem:[\gamma^{70}\approx 0.99^{70}\approx 0.49]。早期动作信号弱，还依赖 Replay 反复抽到链上的转移。
+
+=== 3.2 REINFORCE：整局标量一次乘上
+
+[stem]
+++++
+\nabla J \propto G_{10}\,\nabla\log\pi(a_{10}\mid s_{10})
+++++
+
+stem:[G_{10}] 含第 10 步之后所有回报。优点：第 10 与第 80 步同次见面；缺点：方差极大。
+
+=== 3.3 PPO + GAE：多步 TD 折中
+
+[stem]
+++++
+\delta_t=r_t+\gamma V(s_{t+1})(1-d_t)-V(s_t)
+++++
+
+[stem]
+++++
+A_t=\delta_t+\gamma\lambda(1-d_t)A_{t+1}
+++++
+
+stem:[A_{10}] 含 stem:[(\gamma\lambda)^{69}\delta_{79}] 量级的远期残差。stem:[\lambda=0.95]：比纯 MC 方差小，比单步 TD 传得远。
+
+----
+t:     10        11    ...    79(倒)
+DQN:   Q10 ←…多次采样渗…← Q79 ← r (done 切断)
+REIN:  logπ10 * G10（一次）
+PPO:   A10 = δ10 + γλ δ11 + … + (γλ)^69 δ79
+----
+
+== 4. 过估计：裸 max DQN vs Double（实验菜单）
+
+=== 4.1 机制
+
+目标含 stem:[\max_{a'}Q(s',a')] 时，噪声下 stem:[\max] 偏向偶发偏高的动作 → Q 系统性虚高。
+Double：在线网选 stem:[a^*]，目标网估值。
+
+=== 4.2 最小对照
+
+固定环境 / 网络 / replay / ε / seed，只改目标构造：
+
+[cols="1,2,2",options="header"]
+|===
+|变体 |选 stem:[a^*] |估值网
+
+|裸 / 经典
+|policy 或 target 的 argmax
+|与选动作同一套（或仅 policy）
+
+|Double（现状）
+|`policy.argmax`
+|`target.gather`
+|===
+
+建议记录：`Q_mean`、`policy.max - target.max`、近 10 局回报、可选 Bellman 残差。
+
+=== 4.3 怎么读图
+
+* 回报差不多但 `Q_mean` 高很多 → 过估计嫌疑
+* CartPole 下 stem:[\sum_{k=0}^{499}\gamma^k\approx 100] 量级；Q 长期远大于此要警惕
+* 做消融时 soft/hard 更新策略应两侧一致，否则变量不干净
+
+== 5. 三种损失：梯度在推什么？
+
+[cols="1,2,2,2",options="header"]
+|===
+| |DQN |REINFORCE (+baseline) |PPO（本仓库）
+
+|损失示意
+|stem:[(Q_\theta(s,a)-y)^2]
+|stem:[-A\log\pi_\theta(a\mid s)]
+|stem:[-\min(rA,\,r_{\mathrm{clip}}A)+\cdots]
+
+|stem:[y] / stem:[A]
+|TD 目标（`no_grad`）
+|回报或 stem:[G-V]
+|GAE 的 stem:[A]、stem:[\hat{R}]（算死后固定）
+
+|好动作
+|抬高该格 stem:[Q]
+|增大 stem:[\pi(a\mid s)]
+|同左，但 clip 限幅
+
+|坏动作
+|压低该格 stem:[Q]
+|减小 stem:[\pi]
+|同左 + clip
+
+|未选中动作
+|本步不动（gather）
+|经归一化间接变
+|同左（Categorical）
+
+|失败模式
+|Q 虚高、目标抖
+|方差爆炸
+|ratio 炸、value 抢梯度
+|===
+
+*同状态冲突：* DQN 分别填 stem:[Q(s,\text{左})] / stem:[Q(s,\text{右})]；策略梯度改同一组 logits（此消彼长）；PPO 同向但有刹车。
+
+== 6. 公式推导摘要
+
+=== 6.1 DQN
+
+最优贝尔曼：
+
+[stem]
+++++
+Q^*(s,a)=\mathbb{E}\big[r+\gamma\max_{a'}Q^*(s',a')\big]
+++++
+
+回归目标（经典）：stem:[y=r+\gamma\max_{a'}Q_{\theta^{-}}(s',a')]。 +
+Double：stem:[a^*=\arg\max Q_\theta(s',\cdot)]，stem:[y=r+\gamma Q_{\theta^{-}}(s',a^*)]。 +
+梯度只经 stem:[Q_\theta(s,a)]：stem:[\nabla L\propto(Q-y)\nabla Q]。
+
+=== 6.2 策略梯度 → PPO
+
+[stem]
+++++
+\nabla J=\mathbb{E}\Big[\sum_t\Psi_t\nabla\log\pi_\theta(a_t\mid s_t)\Big]
+++++
+
+[stem]
+++++
+r_t(\theta)=\exp(\log\pi_\theta-\log\pi_{\mathrm{old}})
+++++
+
+[stem]
+++++
+L^{\mathrm{CLIP}}=-\mathbb{E}\big[\min(r_t A_t,\,\mathrm{clip}(r_t,1-\varepsilon,1+\varepsilon)A_t)\big]
+++++
+
+[stem]
+++++
+L=L^{\mathrm{CLIP}}+c_v\|V-\hat{R}\|^2-c_e H[\pi]
+++++
+
+=== 6.3 GAE
+
+[stem]
+++++
+\delta_t=r_t+\gamma V(s_{t+1})(1-d_t)-V(s_t)
+++++
+
+[stem]
+++++
+A_t=\delta_t+\gamma\lambda(1-d_t)A_{t+1}
+++++
+
+[stem]
+++++
+\hat{R}_t=A_t+V(s_t)
+++++
+
+stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实现 stem:[\lambda=0.95]。
+
+== 7. 逐行精读：`train_step`（DQN）
+
+文件：`cart-pole/cartpole_train.py` → `DQNAgent.train_step`。
+
+[cols="2,2,2",options="header"]
+|===
+|代码 |形状直觉 |作用
+
+|`len(memory) < MIN_MEMORY_SIZE: return`
+|—
+|热身；此间 ε 也不衰减
+
+|`memory.sample(B)`
+|stem:[s] shape stem:[[B,4]]；stem:[a,r,s',d] shape stem:[[B]]
+|均匀回放
+
+|`policy_net(states).gather(..., actions)`
+|长度 stem:[B] 的向量
+|只取执行过的 stem:[Q(s,a)]
+
+|`with torch.no_grad():`
+|—
+|stem:[y] 不进计算图
+
+|`policy_net(next).argmax`
+|长度 stem:[B]
+|Double：选 stem:[a^*]
+
+|`target_net(next).gather(a*)`
+|长度 stem:[B]
+|Double：估值
+
+|`r + γ Q' (1-d)`
+|长度 stem:[B]
+|TD 目标；终局切断
+
+|`mse_loss(q, y)`
+|标量
+|回归
+
+|`Adam` 只挂 `policy_net`
+|—
+|target 靠 soft copy
+
+|ε 指数衰减
+|标量
+|按成功 `train_step` 次数
+
+|`τ p + (1-τ) tp`
+|逐参数
+|Soft target
+|===
+
+*反传路径：* `loss ← q_values ← policy_net(states)`；stem:[y] 已 detach。
+
+*与 `choose_action`：* ε-greedy 只影响采样；学习步只做价值回归。
+
+== 8. 逐行精读：`compute_gae` + `ppo_update`
+
+文件：`cart-pole-ppo/ppo_train.py`。
+
+=== 8.1 `compute_gae`（更新前，无梯度）
+
+从 stem:[t=T-1] 倒到 stem:[0]：
+
+. 初始 `next_value = last_value`（缓冲结束后当前状态的 stem:[V]）
+. `delta = r + γ·next_value·(1-d) - V_t`
+. `gae = delta + γλ·(1-d)·gae_未来`
+. `next_value = values[t]`（倒序时对前一步而言的「下一状态 V」）
+. 返回 `(A, A+V)`；后者作 Critic 的 `returns`
+
+采集时的 stem:[V] 已固定 → 整个 `UPDATE_EPOCHS` 内 stem:[A]、stem:[\hat{R}] 当常数标签。
+
+=== 8.2 `ppo_update` 每个 epoch
+
+[cols="2,3",options="header"]
+|===
+|代码 |作用
+
+|`for UPDATE_EPOCHS`
+|同批数据多用几次；靠 clip 限制偏离 stem:[\pi_{\mathrm{old}}]
+
+|`logits, values = model(states)`
+|现策略 + 现 stem:[V]
+
+|`Categorical` / `log_prob(actions)`
+|stem:[\log\pi_\theta(a_t\mid s_t)]
+
+|`entropy`
+|防过早塌缩
+
+|`ratio = exp(new - old)`
+|重要性比率
+
+|`min(rA, clip(r)A)` 再取负 mean
+|PPO 主损失
+
+|`mse(values, returns)`
+|Critic
+
+|`- ENT_COEF * entropy`
+|最大化熵
+
+|`clip_grad_norm_(0.5)`
+|防单步爆炸
+
+|`optimizer.step()`
+|Actor + Critic 一并更新
+|===
+
+*Clip 激活（单样本）：* stem:[A>0] 且 stem:[r>1+\varepsilon]（或对称坏动作情况）时，继续拉大 stem:[\pi] 不再降低该项损失。
+第一 epoch 常 stem:[r\approx 1]；后面几个 epoch clip 才频繁生效。
+
+*反传：* policy/entropy → actor；value → critic；`old_log_probs` / `advantages` / `returns` 无梯度。
+
+== 9. DQN `train_step` vs PPO `ppo_update` 总对照
+
+[cols="1,2,2",options="header"]
+|===
+|维度 |DQN |PPO
+
+|输入单位
+|回放一条转移
+|一整段 rollout
+
+|监督信号
+|标量 stem:[y]
+|向量 stem:[A_t]、stem:[\hat{R}_t]
+
+|优化对象
+|stem:[Q(s,a)] 一格
+|stem:[\log\pi] + stem:[V]
+
+|「旧世界」
+|soft target stem:[\theta^{-}]
+|`old_log_probs` + clip
+
+|每环境步学习
+|几乎每步 1 次梯度
+|攒 rollout 后 × 多 epoch
+
+|探索
+|ε-greedy
+|采样 + 熵
+
+|信用分配进代码的方式
+|反复应用单步贝尔曼
+|一次 GAE 折进 stem:[A_t]
+|===
+
+== 10. 迷你数值速记
+
+*DQN：* stem:[Q=2.0]，stem:[y=2.5] → 残差 stem:[+0.5] → 该动作 Q 升高。
+
+*PPO：* stem:[A=1]，stem:[r=1] → 未裁剪；若更新后 stem:[r=1.3]、stem:[\varepsilon=0.2] → clipped stem:[=1.2]，`min` 刹车，不再奖励继续拉高。
+
+== 11. 相关阅读顺序建议
+
+. link:rl001.py[`rl001.py`] — 环境与随机基线
+. link:cart-pole/README.md[`cart-pole/README.md`] — Double DQN 模块与超参
+. 本文 §1、§7 — 建立「一轮更新」直觉
+. link:cart-pole-ppo/README.md[`cart-pole-ppo/README.md`] — PPO 实现与和 DQN 的表格式对照
+. 本文 §3、§6、§8 — 信用分配与 GAE/PPO 公式
+
+可选后续（未写入代码）：纯 REINFORCE 一页纸脚本；裸 DQN vs Double 的 `Q_mean` 消融曲线。
