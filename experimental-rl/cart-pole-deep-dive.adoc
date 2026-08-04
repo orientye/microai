@@ -17,6 +17,8 @@
 [NOTE]
 ====
 本文件为 *AsciiDoc*（`.adoc`）。请用 AsciiDoc 预览（如 VS Code / Cursor 的 AsciiDoc 扩展）打开；文档属性 `:stem: latexmath` 启用公式。
+
+算法对照以「思想 + 与源码关键路径」为主。PPO 侧实现细节（分离 Actor/Critic、Tanh、`ROLLOUT_STEPS=128`、`UPDATE_EPOCHS=4` 等）见 link:cart-pole-ppo/README.md[`cart-pole-ppo/README.md`]，勿与早期「无 GAE / 单 epoch」草稿混淆。
 ====
 
 == 配套代码
@@ -80,8 +82,10 @@
 
 [stem]
 ++++
-L \approx \frac{1}{2}\left[(3.0-4.465)^2+(1.5-1)^2\right]\approx 1.20
+L_{\mathrm{mean}} = \frac{(3.0-4.465)^2+(1.5-1)^2}{2} \approx 1.20
 ++++
+
+（与 PyTorch `mse_loss` 默认 `mean` 一致；有的教材在 MSE 前写 stem:[1/2]，仅差常数倍，不影响 Adam 方向。）
 
 反传只更新 `policy_net`：样本 0 抬高「右推」的 Q，样本 1 压低「左推」的 Q；随后 soft update 渗一点进 `target_net`。
 
@@ -305,11 +309,11 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 |热身；此间 ε 也不衰减
 
 |`memory.sample(B)`
-|stem:[s] shape stem:[[B,4]]；stem:[a,r,s',d] shape stem:[[B]]
+|`s` 为 `[B,4]`；`a,r,s',d` 为 `[B]`
 |均匀回放
 
 |`policy_net(states).gather(..., actions)`
-|长度 stem:[B] 的向量
+|长度 `B` 的向量
 |只取执行过的 stem:[Q(s,a)]
 
 |`with torch.no_grad():`
@@ -317,15 +321,15 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 |stem:[y] 不进计算图
 
 |`policy_net(next).argmax`
-|长度 stem:[B]
+|长度 `B`
 |Double：选 stem:[a^*]
 
 |`target_net(next).gather(a*)`
-|长度 stem:[B]
+|长度 `B`
 |Double：估值
 
 |`r + γ Q' (1-d)`
-|长度 stem:[B]
+|长度 `B`
 |TD 目标；终局切断
 
 |`mse_loss(q, y)`
@@ -446,7 +450,7 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 
 *DQN：* stem:[Q=2.0]，stem:[y=2.5] → 残差 stem:[+0.5] → 该动作 Q 升高。
 
-*PPO：* stem:[A=1]，stem:[r=1] → 未裁剪；若更新后 stem:[r=1.3]、stem:[\varepsilon=0.2] → clipped stem:[=1.2]，`min` 刹车，不再奖励继续拉高。
+*PPO：* stem:[A=1]，stem:[r=1] → 未裁剪；若更新后 stem:[r=1.3]、stem:[\varepsilon=0.2] → clipped 为 stem:[1.2]，`min` 刹车，不再奖励继续拉高。
 
 == 11. 相关阅读顺序建议
 
