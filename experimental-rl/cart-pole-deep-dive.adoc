@@ -37,6 +37,7 @@
 小车上立着一根杆。你每一步只能选「推左」或「推右」。杆立得越久，分数越高。AI 要自己学会怎么推。
 
 环境名字叫 `CartPole-v1`：撑满 *500* 步算满分；杆倒或车出界则本局结束。
+https://gymnasium.farama.org/environments/classic_control/cart_pole/
 
 === 三个角色
 

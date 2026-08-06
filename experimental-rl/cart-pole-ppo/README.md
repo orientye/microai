@@ -26,7 +26,7 @@ python test_ppo_helpers.py
 ---
 
 ## 1. 问题：CartPole 在学什么
-
+https://gymnasium.farama.org/environments/classic_control/cart_pole/
 CartPole-v1 是极简 MDP：小车上立一根杆，每步向左或向右推车，目标是尽量不让杆倒下。
 
 | 概念 | 本例取值 |
