@@ -33,6 +33,11 @@ def test_and_render():
         print("❌ 未找到 dqn_cartpole.pth 文件，请先运行训练脚本。")
         return
 
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"QNet 参数总量: {total_params}")
+    for name, p in model.named_parameters():
+        print(f"  {name}: shape={tuple(p.shape)}, 个数={p.numel()}")
+
     # 让 AI 纯测试玩 5 局
     for test_episode in range(5):
         state, info = env.reset()
