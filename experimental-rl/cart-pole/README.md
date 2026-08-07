@@ -52,7 +52,7 @@ Q(s,a) ← r + γ · max_{a'} Q(s', a')
    打断相邻样本的强相关，近似 i.i.d. 小批量采样。
 
 2. **目标网络（Target Network）**  
-   用较慢更新的 `target_net` 估计下一状态价值，避免「用正在变化的网络当标签」。
+   估计网络 `policy_net` 负责选动作与当前 Q；较慢更新的 `target_net` 估计下一状态价值，避免「用正在变化的网络当标签」。
 
 3. **Double DQN**  
    用 `policy_net` **选择** `a* = argmax_a Q_policy(s', a)`，用 `target_net` **估计** `Q_target(s', a*)`，减轻 `max` 带来的过估计。
@@ -220,14 +220,57 @@ out = W3·x + b3         # out: 64→2
 训练时还有一份同结构的 `target_net`（慢更新副本）；`dqn_cartpole.pth` 只保存 `policy_net`。  
 `cartpole_test.py` 加载后会打印上述总量与逐层个数，可自行核对。
 
-#### 为什么有两个网（`policy_net` / `target_net`）
+#### 为什么有两个网（估计网络 / 目标网络）
 
-结构都是 `QNet`，角色不同：
+代码注释里的「估计网络」与「目标网络」对应：
 
-| 名字 | 角色 |
-|------|------|
-| `policy_net` | 正在学的打分员：选动作、算当前 `Q(s,a)` |
-| `target_net` | 慢更新的「标准答案」：参与算 TD 目标 `y`（本例为软更新） |
+| 中文称呼（注释） | 变量名 | 英文常见叫法 |
+|------------------|--------|--------------|
+| 估计网络 | `policy_net` | online / policy / Q network |
+| 目标网络 | `target_net` | target network |
+
+二者结构相同（都是 `QNet`），初始化时 `target_net` 从 `policy_net` 拷贝一份权重；之后角色不同。
+
+##### 1. `policy_net`（估计网络 / 策略网络）
+
+真正在学习、会被梯度更新的网络。用途：
+
+- **选动作**：`choose_action` 里用它算 Q 值，取 `argmax`
+- **算当前 Q**：`train_step` 里 `q_values = self.policy_net(states)...`
+- **Double DQN**：还在 `next_states` 上选出最优动作 `a*`
+- **优化器只更新它**：`optim.Adam(self.policy_net.parameters(), ...)`
+- **最后保存的也是它**：`torch.save(agent.policy_net.state_dict(), ...)`
+
+##### 2. `target_net`（目标网络）
+
+结构与 `policy_net` 一样，但参数更新更慢、更稳。用途：给 **TD 目标** 提供相对稳定的「下一状态 Q 值」，避免训练目标跟着当前网络一起剧烈抖动。
+
+本例（Double DQN）里：`policy_net` 选动作，`target_net` 估这个动作的 Q：
+
+```python
+# 计算目标 Q 值 (Double DQN: policy_net 选动作, target_net 估值, 缓解过估)
+with torch.no_grad():
+    best_actions = self.policy_net(next_states).argmax(dim=1)
+    max_next_q_values = self.target_net(next_states).gather(
+        1, best_actions.unsqueeze(1)
+    ).squeeze(1)
+    expected_q_values = rewards + GAMMA * max_next_q_values * (1 - dones)
+```
+
+更新方式是**软更新**（每步小幅跟随）：
+
+```python
+for tp, p in zip(self.target_net.parameters(), self.policy_net.parameters()):
+    tp.data.copy_(TAU * p.data + (1.0 - TAU) * tp.data)
+```
+
+**TD（Temporal Difference，时序差分）** 指用「即时奖励 + 对下一步价值的估计」当学习目标，而不等整局结束再算真实总回报。本例的 TD 目标是：
+
+```text
+y = r + γ · Q_target(s', a*)    （done 时关掉后一项）
+```
+
+对应代码里的 `expected_q_values`。`target_net` 负责稳住这里的 `Q_target(s', a*)`，避免标签和正在更新的估计网络绑死、一起抖。
 
 一步学习在做什么：
 
