@@ -283,6 +283,40 @@ y = r + γ · Q_target(s', a*)    （done 时关掉后一项）
 
 推杆 / 存盘 / 测试用的都是 `policy_net`；`target_net` **不参与选动作**。
 
+#### 损失函数与优化器
+
+两者角色不同：**损失告诉「错多少」；优化器按这个错，把估计网络的参数往对的方向拧一点。**
+
+##### 损失函数（Loss）
+
+衡量「当前估计」和「老师给的目标」差多少：
+
+```python
+loss = F.mse_loss(q_values, expected_q_values)
+```
+
+- **是什么**：均方误差 MSE = 平均 \((q - y)^2\)
+- **`q_values`**：`policy_net` 对真实走过的动作算出的当前 Q
+- **`expected_q_values`**：TD 目标 \(y = r + \gamma Q_{\text{target}}(s', a^*)\)
+
+损失越小，说明估计网络的打分越接近目标网络给出的「标准答案」。
+
+##### 优化器（Optimizer）
+
+根据损失算出的梯度，去改 `policy_net` 的权重：
+
+```python
+self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LR)
+# ...
+self.optimizer.zero_grad()
+loss.backward()
+self.optimizer.step()
+```
+
+- **是什么**：Adam（带动量的自适应学习率优化器）
+- **管谁**：只更新 `policy_net` 的参数（`target_net` 不走这里，靠软更新跟着走）
+- **学习率**：`LR = 1e-3`
+
 更细的手推数字与公式见 [`../cart-pole-deep-dive.adoc`](../cart-pole-deep-dive.adoc) §1、§7。
 
 ### 3.2 `ReplayBuffer`
