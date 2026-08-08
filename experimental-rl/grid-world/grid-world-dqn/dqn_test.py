@@ -1,4 +1,4 @@
-"""Test DQN on fresh random layouts; contrast with fixed-map tabular Q."""
+"""Test CNN-DQN on fresh random layouts; contrast with fixed-map tabular Q."""
 
 from __future__ import annotations
 
@@ -15,9 +15,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 DQN_PATH = "dqn_random_layout.pth"
-# Optional contrast: fixed-map tabular Q from the sibling example.
 Q_TABLE_PATH = os.path.join("..", "grid-world-qlearning", "q_table.npy")
-N_LAYOUTS = 30
+N_LAYOUTS = 100
 SEED = 42
 
 
@@ -25,17 +24,14 @@ def main() -> None:
     if not os.path.exists(DQN_PATH):
         raise SystemExit(f"missing {DQN_PATH}; run dqn_train.py first")
 
-    env = GridWorldEnv(
-        randomize_layout=True, n_obstacles=3, render_mode="ansi"
-    )
-    state_dim = int(np.prod(env.observation_space.shape))
-    net = QNet(state_dim, env.action_space.n)
+    env = GridWorldEnv(randomize_layout=True, n_obstacles=3, render_mode="ansi")
+    net = QNet(env.size, env.action_space.n)
     net.load_state_dict(torch.load(DQN_PATH, map_location="cpu", weights_only=True))
     net.eval()
 
     successes = 0
     returns = []
-    print(f"=== DQN greedy on {N_LAYOUTS} fresh random layouts (seed={SEED}) ===")
+    print(f"=== CNN-DQN greedy on {N_LAYOUTS} fresh random layouts (seed={SEED}) ===")
     for i in range(N_LAYOUTS):
         state, info = env.reset(
             seed=SEED + i, options={"randomize_layout": True, "random_start": True}
@@ -69,15 +65,11 @@ def main() -> None:
 
     if os.path.exists(Q_TABLE_PATH):
         q = np.load(Q_TABLE_PATH)
-        # Position-only table has no wall channel; reuse sibling env's discrete-id idea
-        # by reading argmax on flattened... actually tabular needs index obs.
-        # Use a minimal index-obs adapter: encode only agent cell id from env.pos.
         tab_ok = 0
         for i in range(N_LAYOUTS):
             _, info = env.reset(
                 seed=SEED + i, options={"randomize_layout": True, "random_start": True}
             )
-            # Replay the same layout/start with greedy tabular actions on cell id only.
             pos = info["start"]
             obstacles = set(info["obstacles"])
             steps = 0
@@ -85,7 +77,7 @@ def main() -> None:
             while steps < env.max_steps:
                 state_id = pos[0] * env.size + pos[1]
                 action = int(np.argmax(q[state_id]))
-                dr, dc = [( -1, 0), (0, 1), (1, 0), (0, -1)][action]
+                dr, dc = [(-1, 0), (0, 1), (1, 0), (0, -1)][action]
                 nr = min(max(pos[0] + dr, 0), env.size - 1)
                 nc = min(max(pos[1] + dc, 0), env.size - 1)
                 if (nr, nc) not in obstacles:

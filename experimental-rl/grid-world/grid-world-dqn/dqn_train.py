@@ -1,8 +1,7 @@
 """Double DQN on GridWorld with randomized obstacle layouts.
 
-Tabular Q(s=cell) cannot handle changing walls: the same cell needs different
-actions on different maps. This script feeds a 3-channel grid observation
-(agent / obstacle / goal) into a small MLP Q-network.
+Uses a small CNN over a 3-channel grid (agent / obstacle / goal) so the
+policy can actually see walls when layouts change.
 """
 
 from __future__ import annotations
@@ -28,33 +27,48 @@ from grid_world_env import GridWorldEnv
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-LR = 1e-3
+LR = 5e-4
 GAMMA = 0.99
-BATCH_SIZE = 64
-MEMORY_SIZE = 20000
-MIN_MEMORY_SIZE = 1000
+BATCH_SIZE = 128
+MEMORY_SIZE = 50000
+MIN_MEMORY_SIZE = 2000
 TAU = 0.005
+GRAD_CLIP = 10.0
 EPS_START = 1.0
-EPS_END = 0.05
-EPS_DECAY_STEPS = 8000
-MAX_EPISODES = 3000
-EVAL_EVERY = 100
-EVAL_LAYOUTS = 40
+EPS_END = 0.02
+EPS_DECAY_STEPS = 20000
+MAX_EPISODES = 6000
+EVAL_EVERY = 200
+EVAL_LAYOUTS = 100
 SAVE_BEST = "dqn_random_layout.pth"
 SAVE_CURVE = "dqn_reward_history.png"
+SEED = 0
 
 
 class QNet(nn.Module):
-    def __init__(self, state_dim: int, action_dim: int):
+    """CNN Q-network: flat 3*H*W obs -> reshape to (B,3,H,W) -> 4 action values."""
+
+    def __init__(self, grid_size: int, action_dim: int):
         super().__init__()
-        self.fc1 = nn.Linear(state_dim, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.out = nn.Linear(128, action_dim)
+        self.grid_size = grid_size
+        self.conv = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+        )
+        flat = 64 * grid_size * grid_size
+        self.head = nn.Sequential(
+            nn.Linear(flat, 128),
+            nn.ReLU(),
+            nn.Linear(128, action_dim),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.out(x)
+        if x.dim() == 2:
+            x = x.view(-1, 3, self.grid_size, self.grid_size)
+        x = self.conv(x)
+        return self.head(x.flatten(1))
 
 
 class ReplayBuffer:
@@ -80,12 +94,12 @@ class ReplayBuffer:
 
 
 class DQNAgent:
-    def __init__(self, state_dim: int, action_dim: int):
+    def __init__(self, grid_size: int, action_dim: int):
         self.action_dim = action_dim
         self.epsilon = EPS_START
         self.step_count = 0
-        self.policy_net = QNet(state_dim, action_dim)
-        self.target_net = QNet(state_dim, action_dim)
+        self.policy_net = QNet(grid_size, action_dim)
+        self.target_net = QNet(grid_size, action_dim)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LR)
         self.memory = ReplayBuffer(MEMORY_SIZE)
@@ -109,6 +123,7 @@ class DQNAgent:
         loss = F.mse_loss(q_values, target)
         self.optimizer.zero_grad()
         loss.backward()
+        nn.utils.clip_grad_norm_(self.policy_net.parameters(), GRAD_CLIP)
         self.optimizer.step()
 
         self.step_count += 1
@@ -142,16 +157,22 @@ def evaluate(agent: DQNAgent, env: GridWorldEnv, n_layouts: int) -> dict[str, fl
     }
 
 
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
 def main() -> None:
+    set_seed(SEED)
     env = GridWorldEnv(randomize_layout=True, n_obstacles=3)
-    state_dim = int(np.prod(env.observation_space.shape))
-    agent = DQNAgent(state_dim, env.action_space.n)
+    agent = DQNAgent(env.size, env.action_space.n)
 
     episode_returns: list[float] = []
     eval_curve: list[tuple[int, float]] = []
     best_score = -1.0
 
-    print("Training Double DQN on randomized GridWorld layouts...")
+    print("Training CNN Double DQN on randomized GridWorld layouts...")
     for episode in range(1, MAX_EPISODES + 1):
         state, _ = env.reset(options={"randomize_layout": True, "random_start": True})
         ep_return = 0.0
@@ -201,7 +222,7 @@ def main() -> None:
         ax.plot(xs, ys, "o-", label="random-layout greedy mean")
     ax.set_xlabel("episode")
     ax.set_ylabel("return")
-    ax.set_title("GridWorld DQN (random layouts)")
+    ax.set_title("GridWorld CNN-DQN (random layouts)")
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()

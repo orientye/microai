@@ -1,12 +1,12 @@
-# GridWorld + Double DQN（随机布局）
+# GridWorld + CNN Double DQN（随机布局）
 
-本目录用 **Double DQN** 训练 **每局障碍都可能变化** 的 5×5 GridWorld。  
+本目录用 **CNN + Double DQN** 训练 **每局障碍都可能变化** 的 5×5 GridWorld。  
 和同级 `grid-world-qlearning` 的差别：那里背熟一张固定地图；这里必须**看见墙**才能换图泛化。
 
 | 文件 | 作用 |
 |------|------|
 | `grid_world_env.py` | 随机可解布局；观察为 3 通道拼成的向量 |
-| `dqn_train.py` | 经验回放 + Double DQN + 软更新 |
+| `dqn_train.py` | CNN Q 网络 + 经验回放 + Double DQN + 软更新 |
 | `dqn_test.py` | 新随机地图上测 DQN；可选对照表格 Q |
 | `dqn_random_layout.pth` | 最佳策略网络 |
 | `dqn_reward_history.png` | 训练曲线 |
@@ -30,7 +30,7 @@ python dqn_test.py
 - Agent 输入整张图，输出上下左右的 Q 值，尽快到 `G`
 - 奖励：每步 `-0.01`，到终点 `+1`
 
-观察（`3 × 5 × 5` 拉平为 75 维）：
+观察（`3 × 5 × 5`，训练时会 reshape 回卷积输入）：
 
 | 通道 | 含义 |
 |------|------|
@@ -38,19 +38,22 @@ python dqn_test.py
 | obstacle | 墙为 1 |
 | goal | 终点为 1 |
 
-为什么不能继续用表格 `Q[格子]`：同一格在不同地图上最优动作不同，状态里必须带上墙的信息。
+为什么不能继续用表格 `Q[格子]`：同一格在不同地图上最优动作不同，状态里必须带上墙的信息。  
+为什么不用扁平 MLP：网格是空间结构；CNN 更容易学「绕墙」「朝终点」这类局部模式。
 
 ---
 
-## 2. 算法
+## 2. 算法与提分点
 
-与 CartPole Double DQN 同构：
+与 CartPole Double DQN 同构，并针对随机布局做了加强：
 
-1. Replay Buffer  
-2. policy_net 选 `a*`，target_net 估 `Q(s', a*)`  
+1. Replay Buffer（更大）
+2. policy_net 选 `a*`，target_net 估 `Q(s', a*)`
 3. 目标网络软更新 `τ`
+4. **CNN** 替代扁平 MLP
+5. 更慢的 ε 衰减、更多 episode、更大评估样本再存最佳模型
 
-选动作仍是 ε-greedy；评估时纯贪心。
+选动作仍是 ε-greedy；评估 / 测试时纯贪心。
 
 ---
 
@@ -58,15 +61,16 @@ python dqn_test.py
 
 `dqn_test.py`：
 
-1. 在一批**全新随机地图**上跑 DQN，看成功率  
-2. 若存在 `../grid-world-qlearning/q_table.npy`，用「只看坐标」的表格策略在同样风格的随机图上对照——通常明显更差  
+1. 在一批**全新随机地图**上跑 DQN，看成功率（默认 100 张）
+2. 若存在 `../grid-world-qlearning/q_table.npy`，用「只看坐标」的表格策略对照
 
 说服力来自「换墙还能到」，不是重复同一固定轨迹。
 
 ---
 
-## 4. 下一步
+## 4. 若还想更高
 
-- 把扁平 MLP 换成小型 CNN（输入 `3×H×W`）
-- 增大 `size` / `n_obstacles`
+- 课程学习：先 1 个障碍，再 2，再 3
+- 奖励塑形：按到终点的曼哈顿距离给小负分（注意别引入捷径）
+- 更大地图 / 更多障碍时，继续加深 CNN
 - 再去做 CliffWalking 或连续控制（MountainCarContinuous）
