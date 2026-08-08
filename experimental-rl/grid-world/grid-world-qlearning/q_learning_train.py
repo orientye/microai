@@ -42,16 +42,43 @@ def choose_action(q: np.ndarray, state: int, epsilon: float, rng: np.random.Gene
     return int(np.argmax(q[state]))
 
 
-def run_greedy_episode(env: GridWorldEnv, q: np.ndarray) -> float:
-    state, _ = env.reset()
+def run_greedy_episode(
+    env: GridWorldEnv,
+    q: np.ndarray,
+    *,
+    start: tuple[int, int] | None = None,
+) -> tuple[float, bool, int]:
+    options = {"start": start} if start is not None else None
+    state, _ = env.reset(options=options)
     total = 0.0
+    steps = 0
     done = False
+    reached_goal = False
     while not done:
         action = int(np.argmax(q[state]))
         state, reward, terminated, truncated, _ = env.step(action)
         total += reward
+        steps += 1
+        reached_goal = terminated
         done = terminated or truncated
-    return total
+    return total, reached_goal, steps
+
+
+def evaluate_all_starts(env: GridWorldEnv, q: np.ndarray) -> dict[str, float]:
+    """Greedy rollout from every free cell; stronger than repeating one fixed start."""
+    starts = env.free_cells(include_goal=False)
+    returns = []
+    successes = 0
+    for start in starts:
+        ret, ok, _ = run_greedy_episode(env, q, start=start)
+        returns.append(ret)
+        successes += int(ok)
+    return {
+        "n_starts": float(len(starts)),
+        "success_rate": successes / len(starts),
+        "mean_return": float(np.mean(returns)),
+        "min_return": float(np.min(returns)),
+    }
 
 
 def policy_grid(env: GridWorldEnv, q: np.ndarray) -> list[list[str]]:
@@ -119,7 +146,8 @@ def main() -> None:
     eval_returns: list[tuple[int, float]] = []
 
     for episode in range(1, MAX_EPISODES + 1):
-        state, _ = env.reset()
+        # Random start each episode so Q covers the whole map, not only corner S.
+        state, _ = env.reset(options={"random_start": True})
         done = False
         ep_return = 0.0
         epsilon = epsilon_by_episode(episode - 1)
@@ -143,12 +171,14 @@ def main() -> None:
         episode_returns.append(ep_return)
 
         if episode % EVAL_EVERY == 0 or episode == MAX_EPISODES:
-            greedy_scores = [run_greedy_episode(env, q) for _ in range(20)]
-            mean_score = float(np.mean(greedy_scores))
-            eval_returns.append((episode, mean_score))
+            stats = evaluate_all_starts(env, q)
+            eval_returns.append((episode, stats["mean_return"]))
             print(
                 f"episode={episode:4d}  eps={epsilon:.3f}  "
-                f"train_return={ep_return:.3f}  greedy_mean={mean_score:.3f}"
+                f"train_return={ep_return:.3f}  "
+                f"all_starts_mean={stats['mean_return']:.3f}  "
+                f"success={stats['success_rate']:.0%}  "
+                f"min={stats['min_return']:.3f}"
             )
 
     np.save(SAVE_Q, q)
@@ -167,7 +197,7 @@ def main() -> None:
         ax.plot(episode_returns, label="train return")
     if eval_returns:
         xs, ys = zip(*eval_returns)
-        ax.plot(xs, ys, "o-", label="greedy eval mean")
+        ax.plot(xs, ys, "o-", label="all-starts greedy mean")
     ax.set_xlabel("episode")
     ax.set_ylabel("return")
     ax.set_title("GridWorld Q-learning")

@@ -1,4 +1,4 @@
-"""5x5 GridWorld: find a short path from start to goal.
+"""Fixed-layout 5x5 GridWorld for tabular Q-learning.
 
 Layout (row 0 at top):
 
@@ -8,14 +8,13 @@ Layout (row 0 at top):
     . # . . .
     . . . . G
 
+Observation: Discrete cell id 0..24.
 Actions: 0=Up, 1=Right, 2=Down, 3=Left.
-Hitting a wall or obstacle keeps the agent in place.
 """
 
 from __future__ import annotations
 
 import gymnasium as gym
-import numpy as np
 from gymnasium import spaces
 
 
@@ -26,6 +25,7 @@ ACTION_DELTAS = (
     (0, -1),  # Left
 )
 ACTION_ARROWS = ("↑", "→", "↓", "←")
+DEFAULT_OBSTACLES = frozenset({(0, 3), (1, 3), (3, 1)})
 
 
 class GridWorldEnv(gym.Env):
@@ -48,11 +48,9 @@ class GridWorldEnv(gym.Env):
 
         self.start = (0, 0)
         self.goal = (size - 1, size - 1)
-        # A few walls so the optimal path is non-trivial.
-        self.obstacles = {(0, 3), (1, 3), (3, 1)}
+        self.obstacles = set(DEFAULT_OBSTACLES)
 
-        n_states = size * size
-        self.observation_space = spaces.Discrete(n_states)
+        self.observation_space = spaces.Discrete(size * size)
         self.action_space = spaces.Discrete(4)
 
         self.pos: tuple[int, int] = self.start
@@ -64,11 +62,38 @@ class GridWorldEnv(gym.Env):
     def index_to_state(self, index: int) -> tuple[int, int]:
         return divmod(index, self.size)
 
+    def free_cells(self, *, include_goal: bool = False) -> list[tuple[int, int]]:
+        cells: list[tuple[int, int]] = []
+        for r in range(self.size):
+            for c in range(self.size):
+                if (r, c) in self.obstacles:
+                    continue
+                if not include_goal and (r, c) == self.goal:
+                    continue
+                cells.append((r, c))
+        return cells
+
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
-        self.pos = self.start
+        options = options or {}
+        self.obstacles = set(DEFAULT_OBSTACLES)
+
+        if "start" in options:
+            start = tuple(options["start"])
+            if start in self.obstacles or start == self.goal:
+                raise ValueError(f"invalid start cell: {start}")
+            if not (0 <= start[0] < self.size and 0 <= start[1] < self.size):
+                raise ValueError(f"start out of bounds: {start}")
+            self.pos = start  # type: ignore[assignment]
+        elif options.get("random_start", False):
+            cells = self.free_cells(include_goal=False)
+            idx = int(self.np_random.integers(0, len(cells)))
+            self.pos = cells[idx]
+        else:
+            self.pos = self.start
+
         self.steps = 0
-        return self.state_to_index(*self.pos), {}
+        return self.state_to_index(*self.pos), {"start": self.pos}
 
     def step(self, action: int):
         if not self.action_space.contains(action):
