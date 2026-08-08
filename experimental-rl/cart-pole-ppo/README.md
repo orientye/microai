@@ -38,7 +38,7 @@ CartPole-v1 是极简 MDP：小车上立一根杆，每步向左或向右推车�
 | `truncated` | 撑满 **500** 步（单局满分） |
 | 通关判定 | 近 10 局均分 ≥ **450**（仅打印提示，**不早停**） |
 
-与 [`../cart-pole/`](../cart-pole/) 的 Double DQN 示例对照：同一环境、同一通关阈值，但学习范式从 **值函数 + ε-greedy** 换成 **直接学策略 `π(a|s)`**。CartPole 环境细节见 [`../cart-pole/README.md`](../cart-pole/README.md) 第 1 节。
+与 [`../cart-pole-dqn/`](../cart-pole-dqn/) 的 Double DQN 示例对照：同一环境、同一通关阈值，但学习范式从 **值函数 + ε-greedy** 换成 **直接学策略 `π(a|s)`**。CartPole 环境细节见 [`../cart-pole-dqn/README.md`](../cart-pole-dqn/README.md) 第 1 节。
 
 ---
 
@@ -212,9 +212,9 @@ for update in 1..MAX_UPDATES:
 
 ---
 
-## 6. 与 Double DQN（`../cart-pole/`）对照
+## 6. 与 Double DQN（`../cart-pole-dqn/`）对照
 
-| | Double DQN (`cart-pole`) | 简化 PPO（本目录） |
+| | Double DQN (`cart-pole-dqn`) | 简化 PPO（本目录） |
 |--|--------------------------|-------------------|
 | 范式 | Off-policy 值函数 | On-policy 策略梯度 |
 | 网络 | 单 `QNet`，输出 `Q(s,a)` | 分离 Actor + Critic |
@@ -275,6 +275,6 @@ CartPole 上两者都能收敛；PPO 更贴近「直接优化期望回报」的�
 7. 向量环境并行采集 rollout（提速，非 CartPole 必需）  
 8. 删除或明确标注 `compute_returns` 仅为测试/对照用途  
 
-对 CartPole 而言，GAE、分离网络、clip、多 epoch 已是「能训起来」的最小增量集；再堆 IMPALA、LSTM、PopArt 等属于过度工程。若只需对比算法思想，[`../cart-pole/`](../cart-pole/) 的 DQN 与本目录 PPO 已足够。
+对 CartPole 而言，GAE、分离网络、clip、多 epoch 已是「能训起来」的最小增量集；再堆 IMPALA、LSTM、PopArt 等属于过度工程。若只需对比算法思想，[`../cart-pole-dqn/`](../cart-pole-dqn/) 的 DQN 与本目录 PPO 已足够。
 
 公式推导、信用分配、与 DQN `train_step` 的逐行对照见 [`../cart-pole-deep-dive.adoc`](../cart-pole-deep-dive.adoc)（AsciiDoc）。零基础请先读文中 **「新手速通」**。

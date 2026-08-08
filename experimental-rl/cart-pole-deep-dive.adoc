@@ -5,7 +5,7 @@
 :icons: font
 :sectanchors:
 
-本文把 `cart-pole/`（Double DQN）与 `cart-pole-ppo/`（简化 PPO）对照着挖透。
+本文把 `cart-pole-dqn/`（Double DQN）与 `cart-pole-ppo/`（简化 PPO）对照着挖透。
 
 *阅读建议：*
 
@@ -149,7 +149,7 @@ https://gymnasium.farama.org/environments/classic_control/cart_pole/
 === 代码从哪读起（零基础路线）
 
 . link:rl001.py[`rl001.py`] — 随机乱推，只看懂「状态 / 动作 / 奖励 / 一局何时结束」
-. link:cart-pole/README.md[`cart-pole/README.md`] 前半 — CartPole 问题定义与文件说明
+. link:cart-pole-dqn/README.md[`cart-pole-dqn/README.md`] 前半 — CartPole 问题定义与文件说明
 . *本文「新手速通」*（你在这里）→ 再看 *§1 手推一轮*（有具体数字，仍偏直觉）
 . 想对比另一条路线 → link:cart-pole-ppo/README.md[`cart-pole-ppo/README.md`] 概述 + 与 DQN 对照表
 . 有余力再读本文 §3 信用分配、§5 损失对照；*§6～§8 公式与逐行精读可后置*
@@ -165,9 +165,9 @@ https://gymnasium.farama.org/environments/classic_control/cart_pole/
 |===
 |目录 |算法 |入门文档
 
-|link:cart-pole/[`cart-pole/`]
+|link:cart-pole-dqn/[`cart-pole-dqn/`]
 |Double DQN + 软更新 + Replay
-|link:cart-pole/README.md[`cart-pole/README.md`]
+|link:cart-pole-dqn/README.md[`cart-pole-dqn/README.md`]
 
 |link:cart-pole-ppo/[`cart-pole-ppo/`]
 |Actor-Critic + GAE + PPO clip
@@ -182,7 +182,7 @@ https://gymnasium.farama.org/environments/classic_control/cart_pole/
 
 *本节一句话：* 用两个假样本，走一遍「算出当前分 → 算出老师给的目标分 → 算差距 → 改网络」。
 
-对应 link:cart-pole/cartpole_train.py[`cartpole_train.py`] 中 `DQNAgent.train_step`。
+对应 link:cart-pole-dqn/cartpole_train.py[`cartpole_train.py`] 中 `DQNAgent.train_step`。
 
 假设 `BATCH_SIZE=2`，`GAMMA=0.99`：
 
@@ -239,7 +239,7 @@ L_{\mathrm{mean}} = \frac{(3.0-3.97)^2+(1.5-1)^2}{2} \approx 0.60
 [NOTE]
 ====
 本仓库 DQN / PPO 均写 `done = terminated or truncated`，再用 `(1-done)` 关掉 bootstrap。 +
-对 *terminated*（杆倒 / 车出界）正确；对 *truncated*（撑满 500 步）偏保守——杆其实还立着，严格 MDP 仍应 bootstrap。实现简单，会略低估「满分局」的后续价值。详见 link:cart-pole/README.md[`cart-pole/README.md`]。
+对 *terminated*（杆倒 / 车出界）正确；对 *truncated*（撑满 500 步）偏保守——杆其实还立着，严格 MDP 仍应 bootstrap。实现简单，会略低估「满分局」的后续价值。详见 link:cart-pole-dqn/README.md[`cart-pole-dqn/README.md`]。
 ====
 
 == 2. Soft Update 为何比硬拷更稳
@@ -468,7 +468,7 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 
 *本节一句话（进阶）：* 对着源码每一行，对照 §1 的手推过程。建议先完成新手速通 + §1。
 
-文件：`cart-pole/cartpole_train.py` → `DQNAgent.train_step`。
+文件：`cart-pole-dqn/cartpole_train.py` → `DQNAgent.train_step`。
 
 [cols="2,2,2",options="header"]
 |===
@@ -634,7 +634,7 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 *零基础推荐顺序：*
 
 . link:rl001.py[`rl001.py`] — 环境与随机基线
-. link:cart-pole/README.md[`cart-pole/README.md`] 前半 — 问题是什么
+. link:cart-pole-dqn/README.md[`cart-pole-dqn/README.md`] 前半 — 问题是什么
 . *本文「新手速通」* — 类比与路线图
 . *本文 §1* — 用手推数字感受一次 DQN 更新
 . link:cart-pole-ppo/README.md[`cart-pole-ppo/README.md`] — 另一条路线（PPO）概述
