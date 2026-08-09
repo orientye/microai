@@ -1,4 +1,4 @@
-"""Test CNN-DQN on fresh random layouts; contrast with fixed-map tabular Q."""
+"""Evaluate CNN-DQN on freshly sampled random seeds (not a fixed exam set)."""
 
 from __future__ import annotations
 
@@ -16,8 +16,87 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 DQN_PATH = "dqn_random_layout.pth"
 Q_TABLE_PATH = os.path.join("..", "grid-world-qlearning", "q_table.npy")
-N_LAYOUTS = 200
-SEED = 42
+N_SEEDS = 5
+LAYOUTS_PER_SEED = 200
+N_DEMOS = 5
+
+
+def select_action(net: QNet, env: GridWorldEnv, state: np.ndarray) -> int:
+    legal = env.legal_actions(avoid_revisit=True)
+    with torch.no_grad():
+        x = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0)
+        q = net(x).squeeze(0).clone()
+        mask = torch.full_like(q, -1e9)
+        idx = torch.as_tensor(legal, dtype=torch.int64)
+        mask[idx] = q[idx]
+        return int(mask.argmax().item())
+
+
+def rollout_dqn(
+    env: GridWorldEnv,
+    net: QNet,
+    *,
+    seed: int,
+) -> tuple[float, bool, dict, list[tuple[int, int]]]:
+    state, info = env.reset(
+        seed=seed,
+        options={"randomize_layout": True, "random_start": True, "n_obstacles": 3},
+    )
+    path = [info["start"]]
+    total = 0.0
+    done = False
+    reached = False
+    while not done:
+        action = select_action(net, env, state)
+        state, reward, terminated, truncated, _ = env.step(action)
+        total += reward
+        path.append(env.pos)
+        reached = terminated
+        done = terminated or truncated
+    return total, reached, info, path
+
+
+def eval_seed(env: GridWorldEnv, net: QNet, seed: int, n_layouts: int) -> dict[str, float]:
+    returns = []
+    successes = 0
+    for i in range(n_layouts):
+        total, reached, _, _ = rollout_dqn(env, net, seed=seed + i)
+        returns.append(total)
+        successes += int(reached)
+    return {
+        "success_rate": successes / n_layouts,
+        "successes": float(successes),
+        "n_layouts": float(n_layouts),
+        "mean_return": float(np.mean(returns)),
+        "min_return": float(np.min(returns)),
+    }
+
+
+def eval_tabular_seed(env: GridWorldEnv, q: np.ndarray, seed: int, n_layouts: int) -> float:
+    ok = 0
+    for i in range(n_layouts):
+        _, info = env.reset(
+            seed=seed + i,
+            options={"randomize_layout": True, "random_start": True, "n_obstacles": 3},
+        )
+        pos = info["start"]
+        obstacles = set(info["obstacles"])
+        steps = 0
+        reached = False
+        while steps < env.max_steps:
+            state_id = pos[0] * env.size + pos[1]
+            action = int(np.argmax(q[state_id]))
+            dr, dc = [(-1, 0), (0, 1), (1, 0), (0, -1)][action]
+            nr = min(max(pos[0] + dr, 0), env.size - 1)
+            nc = min(max(pos[1] + dc, 0), env.size - 1)
+            if (nr, nc) not in obstacles:
+                pos = (nr, nc)
+            steps += 1
+            if pos == env.goal:
+                reached = True
+                break
+        ok += int(reached)
+    return ok / n_layouts
 
 
 def main() -> None:
@@ -29,72 +108,61 @@ def main() -> None:
     net.load_state_dict(torch.load(DQN_PATH, map_location="cpu", weights_only=True))
     net.eval()
 
-    successes = 0
-    returns = []
-    print(f"=== CNN-DQN greedy on {N_LAYOUTS} fresh random layouts (seed={SEED}) ===")
-    for i in range(N_LAYOUTS):
-        state, info = env.reset(
-            seed=SEED + i, options={"randomize_layout": True, "random_start": True}
-        )
-        path = [info["start"]]
-        total = 0.0
-        done = False
-        reached = False
-        while not done:
-            legal = env.legal_actions(avoid_revisit=True)
-            with torch.no_grad():
-                x = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0)
-                q = net(x).squeeze(0).clone()
-                mask = torch.full_like(q, -1e9)
-                idx = torch.as_tensor(legal, dtype=torch.int64)
-                mask[idx] = q[idx]
-                action = int(mask.argmax().item())
-            state, reward, terminated, truncated, _ = env.step(action)
-            total += reward
-            path.append(env.pos)
-            reached = terminated
-            done = terminated or truncated
-        successes += int(reached)
-        returns.append(total)
-        if i < 5:
-            print(f"demo {i + 1}: start={info['start']} obstacles={sorted(info['obstacles'])}")
-            print(f"  return={total:.3f} steps={len(path) - 1} {'OK' if reached else 'FAIL'}")
-            print(env.render())
-            print("-" * 40)
+    rng = np.random.default_rng()
+    seeds = [int(rng.integers(0, 1_000_000_000)) for _ in range(N_SEEDS)]
 
     print(
-        f"DQN summary: success={successes / N_LAYOUTS:.0%}  "
-        f"mean_return={float(np.mean(returns)):.3f}  "
-        f"min_return={float(np.min(returns)):.3f}"
+        f"=== CNN-DQN multi-seed eval: {N_SEEDS} seeds × {LAYOUTS_PER_SEED} layouts ==="
     )
+    print(f"seeds={seeds}")
+
+    # Demos from the first seed only (illustrative).
+    print(f"\n--- demos from seed={seeds[0]} ---")
+    for i in range(N_DEMOS):
+        total, reached, info, path = rollout_dqn(env, net, seed=seeds[0] + i)
+        mark = "OK" if reached else "FAIL"
+        print(
+            f"demo {i + 1}: start={info['start']} "
+            f"obstacles={sorted(info['obstacles'])}"
+        )
+        print(f"  return={total:.3f} steps={len(path) - 1} {mark}")
+        print(env.render())
+        print("-" * 40)
+
+    seed_rates = []
+    seed_means = []
+    total_ok = 0
+    total_n = 0
+    print("\n--- per-seed summary ---")
+    for seed in seeds:
+        stats = eval_seed(env, net, seed, LAYOUTS_PER_SEED)
+        seed_rates.append(stats["success_rate"])
+        seed_means.append(stats["mean_return"])
+        total_ok += int(stats["successes"])
+        total_n += int(stats["n_layouts"])
+        print(
+            f"seed={seed}: success={stats['success_rate']:.1%} "
+            f"({int(stats['successes'])}/{int(stats['n_layouts'])})  "
+            f"mean_return={stats['mean_return']:.3f}  "
+            f"min_return={stats['min_return']:.3f}"
+        )
+
+    rates = np.asarray(seed_rates, dtype=np.float64)
+    print("\n=== DQN multi-seed summary ===")
+    print(
+        f"overall success={total_ok / total_n:.1%} ({total_ok}/{total_n})  "
+        f"per-seed mean={rates.mean():.1%} ± {rates.std():.1%}  "
+        f"worst={rates.min():.1%}  best={rates.max():.1%}"
+    )
+    print(f"mean_return across seeds={float(np.mean(seed_means)):.3f}")
 
     if os.path.exists(Q_TABLE_PATH):
         q = np.load(Q_TABLE_PATH)
-        tab_ok = 0
-        for i in range(N_LAYOUTS):
-            _, info = env.reset(
-                seed=SEED + i, options={"randomize_layout": True, "random_start": True}
-            )
-            pos = info["start"]
-            obstacles = set(info["obstacles"])
-            steps = 0
-            reached = False
-            while steps < env.max_steps:
-                state_id = pos[0] * env.size + pos[1]
-                action = int(np.argmax(q[state_id]))
-                dr, dc = [(-1, 0), (0, 1), (1, 0), (0, -1)][action]
-                nr = min(max(pos[0] + dr, 0), env.size - 1)
-                nc = min(max(pos[1] + dc, 0), env.size - 1)
-                if (nr, nc) not in obstacles:
-                    pos = (nr, nc)
-                steps += 1
-                if pos == env.goal:
-                    reached = True
-                    break
-            tab_ok += int(reached)
+        tab_rates = [eval_tabular_seed(env, q, seed, LAYOUTS_PER_SEED) for seed in seeds]
+        tab = np.asarray(tab_rates, dtype=np.float64)
         print(
-            f"Tabular Q (../grid-world-qlearning, position-only) on random layouts: "
-            f"success={tab_ok / N_LAYOUTS:.0%}"
+            f"Tabular Q multi-seed: mean={tab.mean():.1%} ± {tab.std():.1%}  "
+            f"worst={tab.min():.1%}"
         )
         print("→ 布局一变，只看坐标的 Q 表没有墙的信息，泛化会明显变差。")
 

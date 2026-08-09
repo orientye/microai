@@ -15,11 +15,12 @@
 cd experimental-rl/grid-world/grid-world-dqn
 python dqn_train.py              # 课程学习（结束会自动微调）
 python dqn_train.py --finetune   # 仅微调
-python dqn_test.py               # 最终成绩：固定 seed=42 的 200 张图
-python inspect_fails.py          # 若有失败，打印卡死路径
+python dqn_test.py               # 最终成绩：随机多种子 × 每种子 200 张图
+python inspect_fails.py          # 排查失败路径（可自改 SEED）
 ```
 
-训练中的 `success=` 现在用**固定评估种子 + 300 张图**，数字更稳；最终仍以 `dqn_test.py` 为准。
+- 训练中的 `success=`：固定评估种子 + 300 张图，方便看收敛、少抖动  
+- `dqn_test.py`：每次随机抽多个种子，报告 overall / mean±std / worst，用来证明泛化  
 
 依赖：`gymnasium`、`numpy`、`matplotlib`、`torch`。
 
@@ -70,10 +71,11 @@ python inspect_fails.py          # 若有失败，打印卡死路径
 
 `dqn_test.py`：
 
-1. 在一批**全新随机地图**上跑 DQN，看成功率（默认 100 张）
-2. 若存在 `../grid-world-qlearning/q_table.npy`，用「只看坐标」的表格策略对照
+1. 默认 **5 个随机种子 × 每种子 200 张图**（共 1000 局）
+2. 报告 overall 成功率、多种子 mean±std、worst/best
+3. 若存在 `../grid-world-qlearning/q_table.npy`，用同一批种子对照表格 Q
 
-说服力来自「换墙还能到」，不是重复同一固定轨迹。
+说服力来自「换种子换墙还能到」，不是背熟某一套固定考题。
 
 ---
 
