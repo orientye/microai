@@ -31,7 +31,7 @@ def main() -> None:
         done = False
         reached = False
         while not done:
-            legal = env.legal_actions()
+            legal = env.legal_actions(avoid_revisit=True)
             with torch.no_grad():
                 x = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0)
                 q = net(x).squeeze(0).clone()

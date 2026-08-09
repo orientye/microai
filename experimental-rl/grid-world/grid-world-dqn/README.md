@@ -13,10 +13,13 @@
 
 ```bash
 cd experimental-rl/grid-world/grid-world-dqn
-python dqn_train.py              # 课程学习
-python dqn_train.py --finetune   # 从最佳权重做 3 障碍微调
-python dqn_test.py
+python dqn_train.py              # 课程学习（结束会自动微调）
+python dqn_train.py --finetune   # 仅微调
+python dqn_test.py               # 最终成绩：固定 seed=42 的 200 张图
+python inspect_fails.py          # 若有失败，打印卡死路径
 ```
+
+训练中的 `success=` 现在用**固定评估种子 + 300 张图**，数字更稳；最终仍以 `dqn_test.py` 为准。
 
 依赖：`gymnasium`、`numpy`、`matplotlib`、`torch`。
 

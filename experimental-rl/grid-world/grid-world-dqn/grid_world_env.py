@@ -69,15 +69,26 @@ class GridWorldEnv(gym.Env):
         r, c = self.pos if pos is None else pos
         return abs(r - self.goal[0]) + abs(c - self.goal[1])
 
-    def legal_actions(self) -> list[int]:
-        """Actions that actually change the cell (not border/obstacle bumps)."""
-        legal: list[int] = []
+    def legal_actions(self, *, avoid_revisit: bool = False) -> list[int]:
+        """Actions that move into a free cell (not border/obstacle bumps).
+
+        If ``avoid_revisit`` and some legal moves enter a never/less-visited cell,
+        only those are returned — breaks greedy A↔B loops during eval/test.
+        """
+        candidates: list[tuple[int, float]] = []
         for action, (dr, dc) in enumerate(ACTION_DELTAS):
             nr, nc = self.pos[0] + dr, self.pos[1] + dc
             if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.obstacles:
-                legal.append(action)
-        # Surrounded (shouldn't happen on reachable cells); fall back to all.
-        return legal or list(range(self.action_space.n))
+                candidates.append((action, float(self.visit_count[nr, nc])))
+        if not candidates:
+            return list(range(self.action_space.n))
+        if avoid_revisit:
+            fresh = [a for a, v in candidates if v < 1.0]
+            if fresh:
+                return fresh
+            min_v = min(v for _, v in candidates)
+            return [a for a, v in candidates if v == min_v]
+        return [a for a, _ in candidates]
 
     def free_cells(self, *, include_goal: bool = False) -> list[tuple[int, int]]:
         cells: list[tuple[int, int]] = []

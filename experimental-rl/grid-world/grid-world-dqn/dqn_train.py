@@ -35,14 +35,15 @@ EPS_END = 0.02
 EPS_DECAY_STEPS = 25000
 MAX_EPISODES = 6000
 EVAL_EVERY = 200
-EVAL_LAYOUTS = 150
+EVAL_LAYOUTS = 300
+EVAL_SEED = 12345  # fixed stream so training success% is comparable across checkpoints
 # Hard-only fine-tune after curriculum (or via --finetune).
 FINETUNE_EPISODES = 4000
 FINETUNE_LR = 1e-4
 FINETUNE_EPS_START = 0.15
 FINETUNE_EPS_END = 0.01
 FINETUNE_EPS_DECAY = 12000
-FINETUNE_EVAL_LAYOUTS = 200
+FINETUNE_EVAL_LAYOUTS = 300
 HARD_MIX = 0.35  # fraction of finetune episodes that replay failing layouts
 # Potential-based shaping: Φ = -manhattan / max_manhattan
 SHAPE_COEF = 0.1
@@ -173,23 +174,36 @@ def shaped_reward(
     return base_reward + SHAPE_COEF * (GAMMA * phi_next - phi)
 
 
-def evaluate(agent: DQNAgent, env: GridWorldEnv, n_layouts: int) -> dict[str, float]:
-    """Evaluate on hardest setting: 3 obstacles, random reachable starts."""
+def evaluate(
+    agent: DQNAgent,
+    env: GridWorldEnv,
+    n_layouts: int,
+    *,
+    seed: int | None = EVAL_SEED,
+) -> dict[str, float]:
+    """Evaluate on hardest setting: 3 obstacles, random reachable starts.
+
+    Pass a fixed ``seed`` so successive training checkpoints are scored on the
+    same layout suite (avoids 149/150 vs 150/150 jitter looking like regression).
+    """
     returns = []
     successes = 0
-    for _ in range(n_layouts):
+    for i in range(n_layouts):
+        reset_seed = None if seed is None else seed + i
         state, info = env.reset(
-            options={"randomize_layout": True, "random_start": True, "n_obstacles": 3}
+            seed=reset_seed,
+            options={"randomize_layout": True, "random_start": True, "n_obstacles": 3},
         )
         total = 0.0
         done = False
         reached = False
         while not done:
             action = agent.choose_action(
-                state, greedy=True, legal_actions=env.legal_actions()
+                state,
+                greedy=True,
+                legal_actions=env.legal_actions(avoid_revisit=True),
             )
             state, reward, terminated, truncated, _ = env.step(action)
-            # Report raw env return (no shaping) for apples-to-apples scores.
             total += reward
             reached = terminated
             done = terminated or truncated
@@ -198,6 +212,8 @@ def evaluate(agent: DQNAgent, env: GridWorldEnv, n_layouts: int) -> dict[str, fl
     return {
         "mean_return": float(np.mean(returns)),
         "success_rate": successes / n_layouts,
+        "successes": float(successes),
+        "n_layouts": float(n_layouts),
         "min_return": float(np.min(returns)),
     }
 
@@ -261,7 +277,7 @@ def collect_failures(
         reached = False
         while not done:
             action = agent.choose_action(
-                state, greedy=True, legal_actions=env.legal_actions()
+                state, greedy=True, legal_actions=env.legal_actions(avoid_revisit=True)
             )
             state, _, terminated, truncated, _ = env.step(action)
             reached = terminated
@@ -276,7 +292,8 @@ def _maybe_save(agent: DQNAgent, env: GridWorldEnv, best_score: float, n_eval: i
     score = stats["success_rate"] + 0.001 * stats["mean_return"]
     print(
         f"  eval_mean={stats['mean_return']:.3f}  "
-        f"success={stats['success_rate']:.0%}  "
+        f"success={stats['success_rate']:.0%} "
+        f"({int(stats['successes'])}/{int(stats['n_layouts'])})  "
         f"min={stats['min_return']:.3f}",
         flush=True,
     )
@@ -343,7 +360,8 @@ def main() -> None:
             score = stats["success_rate"] + 0.001 * stats["mean_return"]
             print(
                 f"  eval_mean={stats['mean_return']:.3f}  "
-                f"success={stats['success_rate']:.0%}  "
+                f"success={stats['success_rate']:.0%} "
+                f"({int(stats['successes'])}/{int(stats['n_layouts'])})  "
                 f"min={stats['min_return']:.3f}",
                 flush=True,
             )
@@ -421,7 +439,8 @@ def finetune() -> None:
             score = stats["success_rate"] + 0.001 * stats["mean_return"]
             print(
                 f"  eval_mean={stats['mean_return']:.3f}  "
-                f"success={stats['success_rate']:.0%}  "
+                f"success={stats['success_rate']:.0%} "
+                f"({int(stats['successes'])}/{int(stats['n_layouts'])})  "
                 f"min={stats['min_return']:.3f}",
                 flush=True,
             )
