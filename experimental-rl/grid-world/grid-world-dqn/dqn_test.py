@@ -41,9 +41,14 @@ def main() -> None:
         done = False
         reached = False
         while not done:
+            legal = env.legal_actions()
             with torch.no_grad():
                 x = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0)
-                action = int(net(x).argmax(dim=1).item())
+                q = net(x).squeeze(0).clone()
+                mask = torch.full_like(q, -1e9)
+                idx = torch.as_tensor(legal, dtype=torch.int64)
+                mask[idx] = q[idx]
+                action = int(mask.argmax().item())
             state, reward, terminated, truncated, _ = env.step(action)
             total += reward
             path.append(env.pos)

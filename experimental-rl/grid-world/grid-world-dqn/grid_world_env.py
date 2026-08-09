@@ -69,6 +69,16 @@ class GridWorldEnv(gym.Env):
         r, c = self.pos if pos is None else pos
         return abs(r - self.goal[0]) + abs(c - self.goal[1])
 
+    def legal_actions(self) -> list[int]:
+        """Actions that actually change the cell (not border/obstacle bumps)."""
+        legal: list[int] = []
+        for action, (dr, dc) in enumerate(ACTION_DELTAS):
+            nr, nc = self.pos[0] + dr, self.pos[1] + dc
+            if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.obstacles:
+                legal.append(action)
+        # Surrounded (shouldn't happen on reachable cells); fall back to all.
+        return legal or list(range(self.action_space.n))
+
     def free_cells(self, *, include_goal: bool = False) -> list[tuple[int, int]]:
         cells: list[tuple[int, int]] = []
         for r in range(self.size):

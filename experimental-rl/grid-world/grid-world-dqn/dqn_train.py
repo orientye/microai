@@ -109,12 +109,23 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LR)
         self.memory = ReplayBuffer(MEMORY_SIZE)
 
-    def choose_action(self, state: np.ndarray, *, greedy: bool = False) -> int:
+    def choose_action(
+        self,
+        state: np.ndarray,
+        *,
+        greedy: bool = False,
+        legal_actions: list[int] | None = None,
+    ) -> int:
+        legal = legal_actions if legal_actions is not None else list(range(self.action_dim))
         if (not greedy) and random.random() < self.epsilon:
-            return random.randrange(self.action_dim)
+            return int(random.choice(legal))
         with torch.no_grad():
             x = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0)
-            return int(self.policy_net(x).argmax(dim=1).item())
+            q = self.policy_net(x).squeeze(0).clone()
+            mask = torch.full_like(q, -1e9)
+            idx = torch.as_tensor(legal, dtype=torch.int64)
+            mask[idx] = q[idx]
+            return int(mask.argmax().item())
 
     def train_step(self) -> None:
         if len(self.memory) < MIN_MEMORY_SIZE:
@@ -174,7 +185,9 @@ def evaluate(agent: DQNAgent, env: GridWorldEnv, n_layouts: int) -> dict[str, fl
         done = False
         reached = False
         while not done:
-            action = agent.choose_action(state, greedy=True)
+            action = agent.choose_action(
+                state, greedy=True, legal_actions=env.legal_actions()
+            )
             state, reward, terminated, truncated, _ = env.step(action)
             # Report raw env return (no shaping) for apples-to-apples scores.
             total += reward
@@ -220,7 +233,7 @@ def _run_episode(
     ep_return = 0.0
     done = False
     while not done:
-        action = agent.choose_action(state)
+        action = agent.choose_action(state, legal_actions=env.legal_actions())
         next_state, reward, terminated, truncated, step_info = env.step(action)
         done = terminated or truncated
         next_dist = int(step_info["manhattan"])
@@ -247,7 +260,9 @@ def collect_failures(
         done = False
         reached = False
         while not done:
-            action = agent.choose_action(state, greedy=True)
+            action = agent.choose_action(
+                state, greedy=True, legal_actions=env.legal_actions()
+            )
             state, _, terminated, truncated, _ = env.step(action)
             reached = terminated
             done = terminated or truncated
