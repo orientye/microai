@@ -5,9 +5,10 @@
 
 | 文件 | 作用 |
 |------|------|
-| `grid_world_env.py` | 随机可解布局；观察为 3 通道拼成的向量 |
-| `dqn_train.py` | CNN Q 网络 + 经验回放 + Double DQN + 软更新 |
-| `dqn_test.py` | 新随机地图上测 DQN；可选对照表格 Q |
+| `grid_world_env.py` | 随机可解布局；观察为 **4** 通道拼成的向量 |
+| `dqn_train.py` | CNN + 课程学习 + 塑形 + 动作掩码；结束可自动微调 |
+| `dqn_test.py` | **随机多种子**评估；可选对照表格 Q |
+| `inspect_fails.py` | 打印失败局的路径（排查卡死） |
 | `dqn_random_layout.pth` | 最佳策略网络 |
 | `dqn_reward_history.png` | 训练曲线 |
 
@@ -15,7 +16,7 @@
 cd experimental-rl/grid-world/grid-world-dqn
 python dqn_train.py              # 课程学习（结束会自动微调）
 python dqn_train.py --finetune   # 仅微调
-python dqn_test.py               # 最终成绩：随机多种子 × 每种子 200 张图
+python dqn_test.py               # 最终成绩：随机 5 种子 × 每种子 200 张图
 python inspect_fails.py          # 排查失败路径（可自改 SEED）
 ```
 
@@ -30,12 +31,20 @@ python inspect_fails.py          # 排查失败路径（可自改 SEED）
 
 ## 1. 在学什么
 
-- 每局采样 `n_obstacles`（默认 3）个障碍，BFS 保证 `S→G` 连通
-- 起点也可随机
-- Agent 输入整张图，输出上下左右的 Q 值，尽快到 `G`
-- 奖励：每步 `-0.01`，到终点 `+1`
+- 每局采样 `n_obstacles`（默认 3）个障碍，BFS 保证 `S→G` 连通  
+- 随机起点只从「能到 G」的格子采样  
+- Agent 输入整张图，输出上下左右的 Q 值，尽快到 `G`  
 
-观察（`4 × 5 × 5`，训练时会 reshape 回卷积输入）：
+奖励（环境原始回报）：
+
+| 情况 | 奖励 |
+|------|------|
+| 到终点 | `+1` |
+| 普通一步 | `-0.01` |
+| 撞墙 / 出界 | `-0.05` |
+| 重访格子 | 额外负分（随访问次数加重） |
+
+观察（`4 × 5 × 5`，训练时 reshape 成卷积输入）：
 
 | 通道 | 含义 |
 |------|------|
@@ -53,17 +62,18 @@ python inspect_fails.py          # 排查失败路径（可自改 SEED）
 
 与 CartPole Double DQN 同构，并针对随机布局做了加强：
 
-1. Replay Buffer（更大）
-2. policy_net 选 `a*`，target_net 估 `Q(s', a*)`
-3. 目标网络软更新 `τ`
-4. **CNN** 替代扁平 MLP
-5. **课程学习**：障碍数 1 → 2 → 3
-6. **距离塑形**：`Φ = -manhattan`，加速靠近终点
-7. **撞墙 / 重访惩罚**；随机起点只从「能到 G」的格子采样
-8. **visited 通道** + 失败布局回放，专门打掉 A↔B / 原地撞墙死循环
-9. **动作掩码**：有可走格时禁止选择撞墙/出界动作（测试与训练选动作都用）
+1. Replay Buffer（更大）  
+2. policy_net 选 `a*`，target_net 估 `Q(s', a*)`  
+3. 目标网络软更新 `τ`  
+4. **CNN** 替代扁平 MLP  
+5. **课程学习**：障碍数 1 → 2 → 3  
+6. **距离塑形**：`Φ = -manhattan`，加速靠近终点  
+7. **撞墙 / 重访惩罚**；可达起点过滤  
+8. **visited 通道** + 失败布局回放  
+9. **动作掩码**：有可走格时禁止撞墙/出界；评估/测试还可 `avoid_revisit`（优先未访问格）  
 
-选动作仍是 ε-greedy；评估 / 测试时纯贪心，且固定 3 障碍。
+训练选动作：ε-greedy + 合法动作掩码。  
+评估 / 测试：纯贪心 + 合法掩码 + 优先未访问。
 
 ---
 
@@ -71,17 +81,17 @@ python inspect_fails.py          # 排查失败路径（可自改 SEED）
 
 `dqn_test.py`：
 
-1. 默认 **5 个随机种子 × 每种子 200 张图**（共 1000 局）
-2. 报告 overall 成功率、多种子 mean±std、worst/best
-3. 若存在 `../grid-world-qlearning/q_table.npy`，用同一批种子对照表格 Q
+1. 默认 **5 个随机种子 × 每种子 200 张图**（共 1000 局）  
+2. 报告 overall 成功率、多种子 mean±std、worst/best  
+3. 若存在 `../grid-world-qlearning/q_table.npy`，用同一批种子对照表格 Q  
 
 说服力来自「换种子换墙还能到」，不是背熟某一套固定考题。
 
 ---
 
-## 4. 若还想更高
+## 4. 下一步可扩展
 
-- 课程学习：先 1 个障碍，再 2，再 3
-- 奖励塑形：按到终点的曼哈顿距离给小负分（注意别引入捷径）
-- 更大地图 / 更多障碍时，继续加深 CNN
-- 再去做 CliffWalking 或连续控制（MountainCarContinuous）
+- 换成 Gymnasium `CliffWalking-v0`，对比 Q-learning vs SARSA  
+- 更大 `size` / 更多障碍；CNN 可再加深  
+- 连续控制：`MountainCarContinuous`  
+- 把动作掩码 / visited 思路迁到别的网格决策任务  
