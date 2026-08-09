@@ -16,7 +16,7 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 DQN_PATH = "dqn_random_layout.pth"
 Q_TABLE_PATH = os.path.join("..", "grid-world-qlearning", "q_table.npy")
-N_LAYOUTS = 100
+N_LAYOUTS = 200
 SEED = 42
 
 

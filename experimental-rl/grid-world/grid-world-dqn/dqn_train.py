@@ -1,8 +1,4 @@
-"""Double DQN on GridWorld with randomized obstacle layouts.
-
-Uses a small CNN over a 3-channel grid (agent / obstacle / goal) so the
-policy can actually see walls when layouts change.
-"""
+"""CNN Double DQN on randomized GridWorld with curriculum + distance shaping."""
 
 from __future__ import annotations
 
@@ -36,18 +32,25 @@ TAU = 0.005
 GRAD_CLIP = 10.0
 EPS_START = 1.0
 EPS_END = 0.02
-EPS_DECAY_STEPS = 20000
-MAX_EPISODES = 6000
+EPS_DECAY_STEPS = 25000
+MAX_EPISODES = 8000
 EVAL_EVERY = 200
-EVAL_LAYOUTS = 100
+EVAL_LAYOUTS = 120
+# Hard-only fine-tune after curriculum (or via --finetune).
+FINETUNE_EPISODES = 5000
+FINETUNE_LR = 1e-4
+FINETUNE_EPS_START = 0.12
+FINETUNE_EPS_END = 0.01
+FINETUNE_EPS_DECAY = 15000
+FINETUNE_EVAL_LAYOUTS = 200
+# Potential-based shaping: Φ = -manhattan / max_manhattan
+SHAPE_COEF = 0.1
 SAVE_BEST = "dqn_random_layout.pth"
 SAVE_CURVE = "dqn_reward_history.png"
 SEED = 0
 
 
 class QNet(nn.Module):
-    """CNN Q-network: flat 3*H*W obs -> reshape to (B,3,H,W) -> 4 action values."""
-
     def __init__(self, grid_size: int, action_dim: int):
         super().__init__()
         self.grid_size = grid_size
@@ -134,17 +137,44 @@ class DQNAgent:
             tp.data.copy_(TAU * p.data + (1.0 - TAU) * tp.data)
 
 
+def curriculum_obstacles(episode: int) -> int:
+    # Easy → hard: 1 obstacle, then 2, then full 3.
+    if episode <= 2000:
+        return 1
+    if episode <= 4000:
+        return 2
+    return 3
+
+
+def shaped_reward(
+    env: GridWorldEnv,
+    base_reward: float,
+    prev_dist: int,
+    next_dist: int,
+    done: bool,
+) -> float:
+    """Potential-based shaping: F = γΦ(s') - Φ(s), Φ = -dist / max_dist."""
+    max_dist = max(1, 2 * (env.size - 1))
+    phi = -prev_dist / max_dist
+    phi_next = 0.0 if done else (-next_dist / max_dist)
+    return base_reward + SHAPE_COEF * (GAMMA * phi_next - phi)
+
+
 def evaluate(agent: DQNAgent, env: GridWorldEnv, n_layouts: int) -> dict[str, float]:
+    """Evaluate on hardest setting: 3 obstacles, random reachable starts."""
     returns = []
     successes = 0
     for _ in range(n_layouts):
-        state, _ = env.reset(options={"randomize_layout": True, "random_start": True})
+        state, info = env.reset(
+            options={"randomize_layout": True, "random_start": True, "n_obstacles": 3}
+        )
         total = 0.0
         done = False
         reached = False
         while not done:
             action = agent.choose_action(state, greedy=True)
             state, reward, terminated, truncated, _ = env.step(action)
+            # Report raw env return (no shaping) for apples-to-apples scores.
             total += reward
             reached = terminated
             done = terminated or truncated
@@ -163,53 +193,56 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
 
 
-def main() -> None:
-    set_seed(SEED)
-    env = GridWorldEnv(randomize_layout=True, n_obstacles=3)
-    agent = DQNAgent(env.size, env.action_space.n)
+def _run_episode(agent: DQNAgent, env: GridWorldEnv, n_obs: int) -> float:
+    state, info = env.reset(
+        options={
+            "randomize_layout": True,
+            "random_start": True,
+            "n_obstacles": n_obs,
+        }
+    )
+    prev_dist = int(info["manhattan"])
+    ep_return = 0.0
+    done = False
+    while not done:
+        action = agent.choose_action(state)
+        next_state, reward, terminated, truncated, step_info = env.step(action)
+        done = terminated or truncated
+        next_dist = int(step_info["manhattan"])
+        train_r = shaped_reward(env, reward, prev_dist, next_dist, done)
+        agent.memory.push(state, action, train_r, next_state, float(done))
+        agent.train_step()
+        state = next_state
+        prev_dist = next_dist
+        ep_return += reward
+    return ep_return
 
-    episode_returns: list[float] = []
-    eval_curve: list[tuple[int, float]] = []
-    best_score = -1.0
 
-    print("Training CNN Double DQN on randomized GridWorld layouts...")
-    for episode in range(1, MAX_EPISODES + 1):
-        state, _ = env.reset(options={"randomize_layout": True, "random_start": True})
-        ep_return = 0.0
-        done = False
-        while not done:
-            action = agent.choose_action(state)
-            next_state, reward, terminated, truncated, _ = env.step(action)
-            done = terminated or truncated
-            agent.memory.push(state, action, reward, next_state, float(done))
-            agent.train_step()
-            state = next_state
-            ep_return += reward
-        episode_returns.append(ep_return)
-
-        if episode % EVAL_EVERY == 0 or episode == MAX_EPISODES:
-            stats = evaluate(agent, env, EVAL_LAYOUTS)
-            eval_curve.append((episode, stats["mean_return"]))
-            print(
-                f"episode={episode:4d}  eps={agent.epsilon:.3f}  "
-                f"train_return={ep_return:.3f}  "
-                f"eval_mean={stats['mean_return']:.3f}  "
-                f"success={stats['success_rate']:.0%}  "
-                f"min={stats['min_return']:.3f}"
-            )
-            # Prefer higher success; tie-break on mean return.
-            score = stats["success_rate"] + 0.001 * stats["mean_return"]
-            if score >= best_score:
-                best_score = score
-                torch.save(agent.policy_net.state_dict(), SAVE_BEST)
-                print(
-                    f"  saved {SAVE_BEST} "
-                    f"(success={stats['success_rate']:.0%}, mean={stats['mean_return']:.3f})"
-                )
-
-    if not os.path.exists(SAVE_BEST):
+def _maybe_save(agent: DQNAgent, env: GridWorldEnv, best_score: float, n_eval: int) -> float:
+    stats = evaluate(agent, env, n_eval)
+    score = stats["success_rate"] + 0.001 * stats["mean_return"]
+    print(
+        f"  eval_mean={stats['mean_return']:.3f}  "
+        f"success={stats['success_rate']:.0%}  "
+        f"min={stats['min_return']:.3f}",
+        flush=True,
+    )
+    if score > best_score:
         torch.save(agent.policy_net.state_dict(), SAVE_BEST)
+        print(
+            f"  saved {SAVE_BEST} "
+            f"(success={stats['success_rate']:.0%}, mean={stats['mean_return']:.3f})",
+            flush=True,
+        )
+        return score
+    return best_score
 
+
+def _save_curve(
+    episode_returns: list[float],
+    eval_curve: list[tuple[int, float]],
+    title: str,
+) -> None:
     fig, ax = plt.subplots(figsize=(8, 4))
     window = 50
     if len(episode_returns) >= window:
@@ -219,17 +252,129 @@ def main() -> None:
         ax.plot(episode_returns, label="train return")
     if eval_curve:
         xs, ys = zip(*eval_curve)
-        ax.plot(xs, ys, "o-", label="random-layout greedy mean")
+        ax.plot(xs, ys, "o-", label="eval mean (3 obstacles)")
     ax.set_xlabel("episode")
     ax.set_ylabel("return")
-    ax.set_title("GridWorld CNN-DQN (random layouts)")
+    ax.set_title(title)
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(SAVE_CURVE, dpi=140)
     plt.close(fig)
-    print(f"saved curve -> {SAVE_CURVE}")
+    print(f"saved curve -> {SAVE_CURVE}", flush=True)
+
+
+def main() -> None:
+    set_seed(SEED)
+    env = GridWorldEnv(randomize_layout=True, n_obstacles=3)
+    agent = DQNAgent(env.size, env.action_space.n)
+
+    episode_returns: list[float] = []
+    eval_curve: list[tuple[int, float]] = []
+    best_score = -1.0
+
+    print("Training CNN-DQN with curriculum + distance shaping...", flush=True)
+    for episode in range(1, MAX_EPISODES + 1):
+        n_obs = curriculum_obstacles(episode)
+        ep_return = _run_episode(agent, env, n_obs)
+        episode_returns.append(ep_return)
+
+        if episode % EVAL_EVERY == 0 or episode == MAX_EPISODES:
+            print(
+                f"episode={episode:4d}  n_obs={n_obs}  eps={agent.epsilon:.3f}  "
+                f"train_return={ep_return:.3f}",
+                flush=True,
+            )
+            stats = evaluate(agent, env, EVAL_LAYOUTS)
+            eval_curve.append((episode, stats["mean_return"]))
+            score = stats["success_rate"] + 0.001 * stats["mean_return"]
+            print(
+                f"  eval_mean={stats['mean_return']:.3f}  "
+                f"success={stats['success_rate']:.0%}  "
+                f"min={stats['min_return']:.3f}",
+                flush=True,
+            )
+            if score >= best_score:
+                best_score = score
+                torch.save(agent.policy_net.state_dict(), SAVE_BEST)
+                print(
+                    f"  saved {SAVE_BEST} "
+                    f"(success={stats['success_rate']:.0%}, mean={stats['mean_return']:.3f})",
+                    flush=True,
+                )
+
+    if not os.path.exists(SAVE_BEST):
+        torch.save(agent.policy_net.state_dict(), SAVE_BEST)
+
+    _save_curve(episode_returns, eval_curve, "GridWorld CNN-DQN (curriculum + shaping)")
+
+
+def finetune() -> None:
+    """Hard-only fine-tune from an existing checkpoint."""
+    if not os.path.exists(SAVE_BEST):
+        raise SystemExit(f"missing {SAVE_BEST}; run curriculum training first")
+
+    set_seed(SEED + 1)
+    env = GridWorldEnv(randomize_layout=True, n_obstacles=3)
+    agent = DQNAgent(env.size, env.action_space.n)
+    state_dict = torch.load(SAVE_BEST, map_location="cpu", weights_only=True)
+    agent.policy_net.load_state_dict(state_dict)
+    agent.target_net.load_state_dict(state_dict)
+    agent.optimizer = optim.Adam(agent.policy_net.parameters(), lr=FINETUNE_LR)
+    agent.epsilon = FINETUNE_EPS_START
+    agent.step_count = 0
+
+    # Patch decay constants for this run via closure on agent.train_step fields.
+    global EPS_START, EPS_END, EPS_DECAY_STEPS
+    EPS_START = FINETUNE_EPS_START
+    EPS_END = FINETUNE_EPS_END
+    EPS_DECAY_STEPS = FINETUNE_EPS_DECAY
+
+    # Baseline with a large eval so we only overwrite on real gains.
+    print("Fine-tuning on 3-obstacle layouts only...", flush=True)
+    base = evaluate(agent, env, FINETUNE_EVAL_LAYOUTS)
+    best_score = base["success_rate"] + 0.001 * base["mean_return"]
+    print(
+        f"  baseline success={base['success_rate']:.0%}  "
+        f"mean={base['mean_return']:.3f}",
+        flush=True,
+    )
+
+    episode_returns: list[float] = []
+    eval_curve: list[tuple[int, float]] = []
+    for episode in range(1, FINETUNE_EPISODES + 1):
+        ep_return = _run_episode(agent, env, n_obs=3)
+        episode_returns.append(ep_return)
+
+        if episode % EVAL_EVERY == 0 or episode == FINETUNE_EPISODES:
+            print(
+                f"finetune={episode:4d}  eps={agent.epsilon:.3f}  "
+                f"train_return={ep_return:.3f}",
+                flush=True,
+            )
+            stats = evaluate(agent, env, FINETUNE_EVAL_LAYOUTS)
+            eval_curve.append((episode, stats["mean_return"]))
+            score = stats["success_rate"] + 0.001 * stats["mean_return"]
+            print(
+                f"  eval_mean={stats['mean_return']:.3f}  "
+                f"success={stats['success_rate']:.0%}  "
+                f"min={stats['min_return']:.3f}",
+                flush=True,
+            )
+            if score > best_score:
+                best_score = score
+                torch.save(agent.policy_net.state_dict(), SAVE_BEST)
+                print(
+                    f"  saved {SAVE_BEST} "
+                    f"(success={stats['success_rate']:.0%}, mean={stats['mean_return']:.3f})",
+                    flush=True,
+                )
+
+    _save_curve(episode_returns, eval_curve, "GridWorld CNN-DQN (3-obstacle fine-tune)")
 
 
 if __name__ == "__main__":
-    main()
+    if "--finetune" in sys.argv:
+        finetune()
+    else:
+        main()

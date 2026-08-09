@@ -13,7 +13,8 @@
 
 ```bash
 cd experimental-rl/grid-world/grid-world-dqn
-python dqn_train.py
+python dqn_train.py              # 课程学习
+python dqn_train.py --finetune   # 从最佳权重做 3 障碍微调
 python dqn_test.py
 ```
 
@@ -51,9 +52,11 @@ python dqn_test.py
 2. policy_net 选 `a*`，target_net 估 `Q(s', a*)`
 3. 目标网络软更新 `τ`
 4. **CNN** 替代扁平 MLP
-5. 更慢的 ε 衰减、更多 episode、更大评估样本再存最佳模型
+5. **课程学习**：障碍数 1 → 2 → 3
+6. **距离塑形**：`Φ = -manhattan`，加速靠近终点
+7. **撞墙惩罚**；随机起点只从「能到 G」的格子采样（避免无解局）
 
-选动作仍是 ε-greedy；评估 / 测试时纯贪心。
+选动作仍是 ε-greedy；评估 / 测试时纯贪心，且固定 3 障碍。
 
 ---
 
