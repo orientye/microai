@@ -1,10 +1,7 @@
 """Random-layout 5x5 GridWorld for DQN.
 
-Each reset can sample a new obstacle set (BFS-guaranteed solvable).
-Observation is a flat 3-channel grid: [agent | obstacle | goal].
-
-Important: random starts are sampled only from cells that can still reach G,
-so a layout is never "impossible" for the chosen start.
+Observation channels (flat): agent | obstacle | goal | visited.
+The visited channel breaks greedy A↔B / bump loops at test time.
 """
 
 from __future__ import annotations
@@ -23,6 +20,7 @@ ACTION_DELTAS = (
     (0, -1),  # Left
 )
 ACTION_ARROWS = ("↑", "→", "↓", "←")
+N_CHANNELS = 4
 
 
 class GridWorldEnv(gym.Env):
@@ -33,6 +31,7 @@ class GridWorldEnv(gym.Env):
         size: int = 5,
         step_penalty: float = -0.01,
         bump_penalty: float = -0.05,
+        revisit_penalty: float = -0.03,
         goal_reward: float = 1.0,
         max_steps: int = 50,
         n_obstacles: int = 3,
@@ -43,6 +42,7 @@ class GridWorldEnv(gym.Env):
         self.size = size
         self.step_penalty = step_penalty
         self.bump_penalty = bump_penalty
+        self.revisit_penalty = revisit_penalty
         self.goal_reward = goal_reward
         self.max_steps = max_steps
         self.n_obstacles = n_obstacles
@@ -52,12 +52,13 @@ class GridWorldEnv(gym.Env):
         self.start = (0, 0)
         self.goal = (size - 1, size - 1)
         self.obstacles: set[tuple[int, int]] = set()
+        self.visit_count = np.zeros((size, size), dtype=np.float32)
 
         self.action_space = spaces.Discrete(4)
         self.observation_space = spaces.Box(
             low=0.0,
             high=1.0,
-            shape=(3 * size * size,),
+            shape=(N_CHANNELS * size * size,),
             dtype=np.float32,
         )
 
@@ -80,7 +81,6 @@ class GridWorldEnv(gym.Env):
         return cells
 
     def cells_reaching_goal(self) -> list[tuple[int, int]]:
-        """All free non-goal cells from which G is reachable (BFS backward)."""
         q: deque[tuple[int, int]] = deque([self.goal])
         seen = {self.goal}
         while q:
@@ -135,11 +135,13 @@ class GridWorldEnv(gym.Env):
         agent = np.zeros((self.size, self.size), dtype=np.float32)
         obstacle = np.zeros((self.size, self.size), dtype=np.float32)
         goal = np.zeros((self.size, self.size), dtype=np.float32)
+        # Cap so the channel stays in [0, 1]; saturation still signals "looping hard".
+        visited = np.clip(self.visit_count / 5.0, 0.0, 1.0)
         agent[self.pos] = 1.0
         for r, c in self.obstacles:
             obstacle[r, c] = 1.0
         goal[self.goal] = 1.0
-        return np.concatenate([agent.ravel(), obstacle.ravel(), goal.ravel()])
+        return np.concatenate([agent.ravel(), obstacle.ravel(), goal.ravel(), visited.ravel()])
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
@@ -155,7 +157,6 @@ class GridWorldEnv(gym.Env):
 
         reachable = self.cells_reaching_goal()
         if not reachable:
-            # Should be rare; resample once more.
             self.obstacles = self._sample_obstacles(n_obstacles)
             reachable = self.cells_reaching_goal()
 
@@ -171,6 +172,8 @@ class GridWorldEnv(gym.Env):
             self.pos = self.start if self.start in reachable else reachable[0]
 
         self.steps = 0
+        self.visit_count = np.zeros((self.size, self.size), dtype=np.float32)
+        self.visit_count[self.pos] = 1.0
         return self._observe(), {
             "start": self.pos,
             "obstacles": frozenset(self.obstacles),
@@ -193,18 +196,25 @@ class GridWorldEnv(gym.Env):
             self.pos = intended
 
         self.steps += 1
+        prev_visits = float(self.visit_count[self.pos])
+        self.visit_count[self.pos] += 1.0
+
         terminated = self.pos == self.goal
         truncated = self.steps >= self.max_steps
         if terminated:
             reward = self.goal_reward
-        elif bumped:
-            reward = self.bump_penalty
         else:
-            reward = self.step_penalty
+            reward = self.bump_penalty if bumped else self.step_penalty
+            # Penalize revisits to discourage A↔B / stay-put loops.
+            if prev_visits >= 1.0:
+                reward += self.revisit_penalty * prev_visits
+
         return self._observe(), reward, terminated, truncated, {
             "bumped": bumped,
             "manhattan": self.manhattan(),
+            "revisits": prev_visits,
         }
+
     def render(self) -> str:
         lines = []
         for r in range(self.size):

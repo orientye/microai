@@ -33,16 +33,17 @@ GRAD_CLIP = 10.0
 EPS_START = 1.0
 EPS_END = 0.02
 EPS_DECAY_STEPS = 25000
-MAX_EPISODES = 8000
+MAX_EPISODES = 6000
 EVAL_EVERY = 200
-EVAL_LAYOUTS = 120
+EVAL_LAYOUTS = 150
 # Hard-only fine-tune after curriculum (or via --finetune).
-FINETUNE_EPISODES = 5000
+FINETUNE_EPISODES = 4000
 FINETUNE_LR = 1e-4
-FINETUNE_EPS_START = 0.12
+FINETUNE_EPS_START = 0.15
 FINETUNE_EPS_END = 0.01
-FINETUNE_EPS_DECAY = 15000
+FINETUNE_EPS_DECAY = 12000
 FINETUNE_EVAL_LAYOUTS = 200
+HARD_MIX = 0.35  # fraction of finetune episodes that replay failing layouts
 # Potential-based shaping: Φ = -manhattan / max_manhattan
 SHAPE_COEF = 0.1
 SAVE_BEST = "dqn_random_layout.pth"
@@ -51,11 +52,12 @@ SEED = 0
 
 
 class QNet(nn.Module):
-    def __init__(self, grid_size: int, action_dim: int):
+    def __init__(self, grid_size: int, action_dim: int, n_channels: int = 4):
         super().__init__()
         self.grid_size = grid_size
+        self.n_channels = n_channels
         self.conv = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.Conv2d(n_channels, 32, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -69,7 +71,7 @@ class QNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 2:
-            x = x.view(-1, 3, self.grid_size, self.grid_size)
+            x = x.view(-1, self.n_channels, self.grid_size, self.grid_size)
         x = self.conv(x)
         return self.head(x.flatten(1))
 
@@ -193,14 +195,27 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
 
 
-def _run_episode(agent: DQNAgent, env: GridWorldEnv, n_obs: int) -> float:
-    state, info = env.reset(
-        options={
+def _run_episode(
+    agent: DQNAgent,
+    env: GridWorldEnv,
+    n_obs: int,
+    *,
+    obstacles: set[tuple[int, int]] | frozenset[tuple[int, int]] | None = None,
+    start: tuple[int, int] | None = None,
+) -> float:
+    if obstacles is not None and start is not None:
+        options = {
+            "randomize_layout": False,
+            "obstacles": obstacles,
+            "start": start,
+        }
+    else:
+        options = {
             "randomize_layout": True,
             "random_start": True,
             "n_obstacles": n_obs,
         }
-    )
+    state, info = env.reset(options=options)
     prev_dist = int(info["manhattan"])
     ep_return = 0.0
     done = False
@@ -216,6 +231,29 @@ def _run_episode(agent: DQNAgent, env: GridWorldEnv, n_obs: int) -> float:
         prev_dist = next_dist
         ep_return += reward
     return ep_return
+
+
+def collect_failures(
+    agent: DQNAgent,
+    env: GridWorldEnv,
+    n_probe: int = 250,
+) -> list[tuple[frozenset[tuple[int, int]], tuple[int, int]]]:
+    """Gather (obstacles, start) pairs where greedy policy currently fails."""
+    hard: list[tuple[frozenset[tuple[int, int]], tuple[int, int]]] = []
+    for _ in range(n_probe):
+        state, info = env.reset(
+            options={"randomize_layout": True, "random_start": True, "n_obstacles": 3}
+        )
+        done = False
+        reached = False
+        while not done:
+            action = agent.choose_action(state, greedy=True)
+            state, _, terminated, truncated, _ = env.step(action)
+            reached = terminated
+            done = terminated or truncated
+        if not reached:
+            hard.append((frozenset(info["obstacles"]), info["start"]))
+    return hard
 
 
 def _maybe_save(agent: DQNAgent, env: GridWorldEnv, best_score: float, n_eval: int) -> float:
@@ -310,28 +348,32 @@ def main() -> None:
 
 
 def finetune() -> None:
-    """Hard-only fine-tune from an existing checkpoint."""
+    """Hard-only fine-tune from an existing checkpoint + failure replay."""
     if not os.path.exists(SAVE_BEST):
         raise SystemExit(f"missing {SAVE_BEST}; run curriculum training first")
 
     set_seed(SEED + 1)
     env = GridWorldEnv(randomize_layout=True, n_obstacles=3)
     agent = DQNAgent(env.size, env.action_space.n)
-    state_dict = torch.load(SAVE_BEST, map_location="cpu", weights_only=True)
-    agent.policy_net.load_state_dict(state_dict)
-    agent.target_net.load_state_dict(state_dict)
+    try:
+        state_dict = torch.load(SAVE_BEST, map_location="cpu", weights_only=True)
+        agent.policy_net.load_state_dict(state_dict)
+        agent.target_net.load_state_dict(state_dict)
+    except RuntimeError as exc:
+        raise SystemExit(
+            f"checkpoint incompatible with current QNet (likely old 3-channel weights): {exc}\n"
+            "Run: python dqn_train.py"
+        ) from exc
     agent.optimizer = optim.Adam(agent.policy_net.parameters(), lr=FINETUNE_LR)
     agent.epsilon = FINETUNE_EPS_START
     agent.step_count = 0
 
-    # Patch decay constants for this run via closure on agent.train_step fields.
     global EPS_START, EPS_END, EPS_DECAY_STEPS
     EPS_START = FINETUNE_EPS_START
     EPS_END = FINETUNE_EPS_END
     EPS_DECAY_STEPS = FINETUNE_EPS_DECAY
 
-    # Baseline with a large eval so we only overwrite on real gains.
-    print("Fine-tuning on 3-obstacle layouts only...", flush=True)
+    print("Fine-tuning on 3-obstacle layouts + hard-failure replay...", flush=True)
     base = evaluate(agent, env, FINETUNE_EVAL_LAYOUTS)
     best_score = base["success_rate"] + 0.001 * base["mean_return"]
     print(
@@ -339,17 +381,24 @@ def finetune() -> None:
         f"mean={base['mean_return']:.3f}",
         flush=True,
     )
+    hard_cases = collect_failures(agent, env, n_probe=300)
+    print(f"  mined hard cases: {len(hard_cases)}", flush=True)
 
     episode_returns: list[float] = []
     eval_curve: list[tuple[int, float]] = []
     for episode in range(1, FINETUNE_EPISODES + 1):
-        ep_return = _run_episode(agent, env, n_obs=3)
+        use_hard = hard_cases and random.random() < HARD_MIX
+        if use_hard:
+            obstacles, start = random.choice(hard_cases)
+            ep_return = _run_episode(agent, env, n_obs=3, obstacles=obstacles, start=start)
+        else:
+            ep_return = _run_episode(agent, env, n_obs=3)
         episode_returns.append(ep_return)
 
         if episode % EVAL_EVERY == 0 or episode == FINETUNE_EPISODES:
             print(
                 f"finetune={episode:4d}  eps={agent.epsilon:.3f}  "
-                f"train_return={ep_return:.3f}",
+                f"train_return={ep_return:.3f}  hard_pool={len(hard_cases)}",
                 flush=True,
             )
             stats = evaluate(agent, env, FINETUNE_EVAL_LAYOUTS)
@@ -369,8 +418,12 @@ def finetune() -> None:
                     f"(success={stats['success_rate']:.0%}, mean={stats['mean_return']:.3f})",
                     flush=True,
                 )
+            # Refresh hard pool periodically as the policy improves.
+            if episode % 1000 == 0:
+                hard_cases = collect_failures(agent, env, n_probe=300)
+                print(f"  refreshed hard cases: {len(hard_cases)}", flush=True)
 
-    _save_curve(episode_returns, eval_curve, "GridWorld CNN-DQN (3-obstacle fine-tune)")
+    _save_curve(episode_returns, eval_curve, "GridWorld CNN-DQN (hard-replay fine-tune)")
 
 
 if __name__ == "__main__":
@@ -378,3 +431,5 @@ if __name__ == "__main__":
         finetune()
     else:
         main()
+        # Auto hard-finetune with the new 4-channel checkpoint.
+        finetune()
