@@ -167,7 +167,7 @@ q[state, action] += ALPHA * td_error
 - **目标策略（target）**：更新里用 `max`，等价于假设以后永远贪心。
 
 于是可以用「探索时踩到的样本」去学「不探索时的最优策略」。  
-下一步做 CliffWalking 时，会把它和 **SARSA**（用「实际下一步动作」的 Q 来更新）对比：两者在有悬崖的地图上行为会分叉。
+[`../../cliff-walking/`](../../cliff-walking/) 用 **SARSA**（用「实际下一步动作」的 Q 来更新）在悬崖地图上与 Q-learning 对照：两者策略会分叉。
 
 ### 3.4 ε-greedy 探索
 
@@ -298,8 +298,8 @@ TD + max 更新           TD + Double/target            策略梯度 + GAE
 建议的认知顺序：
 
 1. **本例**：看清 `Q`、TD、探索、回报回传  
-2. **`../grid-world-dqn`**：随机地图 + 网格观察 + Double DQN  
-3. **CliffWalking**：同一套表，对比 Q-learning vs SARSA  
+2. **`../../cliff-walking`**：同一套表，对比 Q-learning vs SARSA（离策略 / 在策略）  
+3. **`../grid-world-dqn`**：随机地图 + 网格观察 + Double DQN  
 4. **CartPole DQN / PPO**：连续状态上的值函数 / 策略梯度  
 
 ---

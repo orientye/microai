@@ -91,7 +91,7 @@ python inspect_fails.py          # 排查失败路径（可自改 SEED）
 
 ## 4. 下一步可扩展
 
-- 换成 Gymnasium `CliffWalking-v0`，对比 Q-learning vs SARSA  
+- 表格 Q vs SARSA 对照已见 [`../../cliff-walking/`](../../cliff-walking/)（`CliffWalking-v1`）  
 - 更大 `size` / 更多障碍；CNN 可再加深  
 - 连续控制：`MountainCarContinuous`  
 - 把动作掩码 / visited 思路迁到别的网格决策任务  
