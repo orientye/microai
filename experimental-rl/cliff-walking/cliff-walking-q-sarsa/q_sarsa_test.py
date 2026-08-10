@@ -27,7 +27,7 @@ GAP_SLEEP = 1.0
 
 def load_q(path: Path) -> np.ndarray:
     if not path.exists():
-        raise FileNotFoundError(f"Missing {path.name}; run cliff_train.py first.")
+        raise FileNotFoundError(f"Missing {path.name}; run q_sarsa_train.py first.")
     return np.load(path)
 
 

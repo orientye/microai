@@ -10,8 +10,8 @@
 ```bash
 # 1) 表格：离策略 vs 在策略
 cd cliff-walking-q-sarsa
-python cliff_train.py
-python cliff_test.py          # human 像素动画
+python q_sarsa_train.py
+python q_sarsa_test.py          # human 像素动画
 
 # 2) 网络：值函数近似
 cd ../cliff-walking-dqn

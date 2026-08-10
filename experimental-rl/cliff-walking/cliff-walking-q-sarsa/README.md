@@ -10,21 +10,21 @@
 |------|------|
 | `td_updates.py` | 纯函数：Q-learning / SARSA 的一步 TD 更新 |
 | `cliff_env.py` | 建环境、ε、选动作、策略可视化 |
-| `cliff_train.py` | 同一超参并排训练，存两张 Q 表与图 |
-| `cliff_test.py` | 贪心评估 + **Gymnasium human 像素动画**（对齐官方 GIF / CartPole） |
+| `q_sarsa_train.py` | 同一超参并排训练，存两张 Q 表与图 |
+| `q_sarsa_test.py` | 贪心评估 + **Gymnasium human 像素动画**（对齐官方 GIF / CartPole） |
 | `test_td_updates.py` | 更新式单元测试（`python -m unittest`） |
 
 ```bash
 cd experimental-rl/cliff-walking/cliff-walking-q-sarsa
 python -m unittest test_td_updates -v
-python cliff_train.py
-python cliff_test.py
+python q_sarsa_train.py
+python q_sarsa_test.py
 ```
 
 依赖：`gymnasium`、`numpy`、`matplotlib`；看动态画面还需 **`pygame`**（`pip install pygame`，与 CartPole `render_mode="human"` 相同）。  
 需 Gymnasium 版本支持 `CliffWalking-v1`（较新版本；官方文档当前入口也是 v1）。
 
-`cliff_test.py` 会先打印策略与统计，再弹出官方同款像素窗口，依次演示 Q-learning / SARSA 各 3 局（步间约 0.25s，方便看清贴崖 vs 绕远）。
+`q_sarsa_test.py` 会先打印策略与统计，再弹出官方同款像素窗口，依次演示 Q-learning / SARSA 各 3 局（步间约 0.25s，方便看清贴崖 vs 绕远）。
 
 ---
 
@@ -68,7 +68,7 @@ S C C C C C C C C C C G
 
 ## 3. 训练在看什么
 
-`cliff_train.py` 用**同一套** `α / γ / ε` 日程分别训两种算法，输出：
+`q_sarsa_train.py` 用**同一套** `α / γ / ε` 日程分别训两种算法，输出：
 
 - `q_qlearning.npy` / `q_sarsa.npy`
 - `policy_qlearning.png` / `policy_sarsa.png`（箭头 + `V(s)`）
