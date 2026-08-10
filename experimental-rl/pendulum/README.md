@@ -2,6 +2,8 @@
 
 连续控制课：倒立摆 + 力矩。
 
+https://gymnasium.farama.org/environments/classic_control/pendulum/
+
 | 子目录 | 内容 |
 |--------|------|
 | [`pendulum-ppo`](pendulum-ppo/) | **连续动作 PPO**（高斯策略；先看这个） |
