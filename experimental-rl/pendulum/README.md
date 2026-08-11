@@ -7,11 +7,16 @@ https://gymnasium.farama.org/environments/classic_control/pendulum/
 | 子目录 | 内容 |
 |--------|------|
 | [`pendulum-ppo`](pendulum-ppo/) | **连续动作 PPO**（高斯策略；先看这个） |
+| [`pendulum-sac`](pendulum-sac/) | **SAC**（双 Q + 自动温度；样本效率通常更好） |
 
 ```bash
 cd pendulum-ppo
 python ppo_train.py
 python ppo_test.py
+
+cd ../pendulum-sac
+python sac_train.py
+python sac_test.py
 ```
 
 前置对照：

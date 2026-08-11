@@ -55,6 +55,7 @@ python ppo_test.py
 
 ## 4. 非目标
 
-- 不做 SAC / TD3（另一条连续控制路线）  
 - 不做观测归一化、多环境并行、学习率退火  
 - 不做 `MountainCarContinuous`（可作下一课）  
+
+连续控制下一课：[`../pendulum-sac/`](../pendulum-sac/)（SAC）。 
