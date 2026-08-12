@@ -56,6 +56,6 @@ python ppo_test.py
 ## 4. 非目标
 
 - 不做观测归一化、多环境并行、学习率退火  
-- 不做 `MountainCarContinuous`（可作下一课）  
+- 不做 `MountainCarContinuous`（见独立目录）
 
-连续控制下一课：[`../pendulum-sac/`](../pendulum-sac/)（SAC）。 
+连续控制下一课：[`../pendulum-sac/`](../pendulum-sac/)（SAC）；稀疏成功再看 [`../../mountain-car-continuous/`](../../mountain-car-continuous/)（SAC）。
