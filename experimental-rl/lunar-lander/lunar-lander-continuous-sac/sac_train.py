@@ -110,7 +110,9 @@ class GaussianActor(nn.Module):
 
     @torch.no_grad()
     def act(self, state: np.ndarray, *, deterministic: bool = False) -> np.ndarray:
-        x = torch.as_tensor(state, dtype=torch.float32, device=DEVICE).unsqueeze(0)
+        x = torch.as_tensor(
+            state, dtype=torch.float32, device=next(self.parameters()).device
+        ).unsqueeze(0)
         if deterministic:
             mean, _ = self(x)
             action = torch.tanh(mean) * self.action_high

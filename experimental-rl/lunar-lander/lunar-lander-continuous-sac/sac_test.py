@@ -9,7 +9,7 @@ from pathlib import Path
 import gymnasium as gym
 import torch
 
-from sac_train import GaussianActor, SAVE_BEST
+from sac_train import DEVICE, GaussianActor, SAVE_BEST
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
@@ -28,7 +28,8 @@ def load_actor(env: gym.Env) -> GaussianActor:
         action_dim=int(env.action_space.shape[0]),
         action_high=float(env.action_space.high[0]),
     )
-    actor.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
+    actor.load_state_dict(torch.load(path, map_location=DEVICE, weights_only=True))
+    actor.to(DEVICE)
     actor.eval()
     return actor
 
@@ -43,7 +44,7 @@ def main() -> None:
         render_mode = None
 
     actor = load_actor(env)
-    print(f"Loaded {SAVE_BEST} (render_mode={render_mode!r})")
+    print(f"Loaded {SAVE_BEST} (device={DEVICE}, render_mode={render_mode!r})")
 
     for ep in range(1, NUM_EPISODES + 1):
         state, _ = env.reset()
