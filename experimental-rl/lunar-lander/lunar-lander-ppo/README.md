@@ -57,5 +57,6 @@ https://gymnasium.farama.org/environments/box2d/lunar_lander/
 
 ## 4. 非目标
 
-- 不做 Continuous 版（可作下一课 `LunarLanderContinuous` + SAC）  
 - 不做观测归一化、多环境并行、优先经验回放  
+
+连续动作下一课：[`../lunar-lander-continuous-sac/`](../lunar-lander-continuous-sac/)（SAC）。  
