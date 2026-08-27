@@ -32,14 +32,15 @@ ENT_COEF = 0.01
 ROLLOUT_STEPS = 2048
 UPDATE_EPOCHS = 10
 MINIBATCH_SIZE = 64
-MAX_UPDATES = 400
+MAX_UPDATES = 800
 LOG_EVERY = 10
 EVAL_EVERY = 20
-EVAL_EPISODES = 10
+EVAL_EPISODES = 20
 SEED = 0
 HID = 128
 
-SAVE_THRESHOLD = 200.0
+SAVE_THRESHOLD = 250.0
+STREAK_NEEDED = 2  # consecutive evals at/above threshold before early stop
 SAVE_BEST = "ppo_lunar_lander.pth"
 SAVE_CURVE = "reward_history.png"
 
@@ -205,6 +206,7 @@ def main() -> None:
     reward_history: list[float] = []
     best_eval = float("-inf")
     reported = False
+    streak = 0
 
     print("Training discrete PPO on LunarLander-v3...")
     for update in range(1, MAX_UPDATES + 1):
@@ -237,10 +239,15 @@ def main() -> None:
                 best_eval = eval_mean
                 torch.save(model.state_dict(), HERE / SAVE_BEST)
                 print(f"  saved best -> {SAVE_BEST} (eval={best_eval:.1f})")
-            if eval_mean >= SAVE_THRESHOLD and not reported:
-                print(f"  reached threshold {SAVE_THRESHOLD} at update {update}")
-                reported = True
-                break
+            if eval_mean >= SAVE_THRESHOLD:
+                streak += 1
+                print(f"  threshold streak {streak}/{STREAK_NEEDED}")
+                if streak >= STREAK_NEEDED and not reported:
+                    print(f"  reached threshold {SAVE_THRESHOLD} at update {update}")
+                    reported = True
+                    break
+            else:
+                streak = 0
 
     env.close()
     if not (HERE / SAVE_BEST).exists():
