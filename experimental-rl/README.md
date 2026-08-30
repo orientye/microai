@@ -40,6 +40,7 @@
 | [`lunar-lander/`](lunar-lander/) | `LunarLander-v3` | [离散 PPO](lunar-lander/lunar-lander-ppo/) · [连续 SAC](lunar-lander/lunar-lander-continuous-sac/) |
 | [`pendulum/`](pendulum/) | `Pendulum-v1` | [连续 PPO](pendulum/pendulum-ppo/) · [SAC](pendulum/pendulum-sac/) |
 | [`mountain-car-continuous/`](mountain-car-continuous/) | `MountainCarContinuous-v0` | [SAC](mountain-car-continuous/mountain-car-continuous-sac/) |
+| [`doudizhu/`](doudizhu/) | 斗地主（非 Gym ） | [DouZero](doudizhu/DouZero/)（第三方，DMC + 自博弈） |
 
 各课在自己的 README 里写训练命令、超参和验收阈值。公共依赖：`gymnasium`、`numpy`、`matplotlib`；网络课还要 `torch`；`human` 渲染要 `pygame`。LunarLander 额外：`pip install "gymnasium[box2d]"`。
 
