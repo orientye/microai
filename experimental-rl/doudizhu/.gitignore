@@ -1,0 +1,5 @@
+DouZero/
+__pycache__/
+*.ckpt
+*.pth
+baselines/
