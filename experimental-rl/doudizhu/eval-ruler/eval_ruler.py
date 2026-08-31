@@ -96,9 +96,19 @@ def play_deals(
     from douzero.env.game import GameEnv
 
     env = GameEnv(_load_players(landlord, landlord_up, landlord_down))
+    return play_deals_with_players(deals, env.players)
+
+
+def play_deals_with_players(
+    deals: list[dict],
+    players: dict,
+) -> list[tuple[bool, int]]:
+    """Same as play_deals, but agents are already constructed."""
+    from douzero.env.game import GameEnv
+
+    env = GameEnv(players)
     results: list[tuple[bool, int]] = []
     for deal in deals:
-        # GameEnv mutates hand lists in place; copy so seat-swap can replay.
         env.card_play_init(copy.deepcopy(deal))
         while not env.game_over:
             env.step()
@@ -106,6 +116,37 @@ def play_deals(
         results.append((landlord_won, int(env.bomb_num)))
         env.reset()
     return results
+
+
+def evaluate_seat_swap_players(
+    players_a: dict,
+    players_b: dict,
+    deals: list[dict],
+    *,
+    label_a: str,
+    label_b: str,
+) -> dict:
+    seating_a = play_deals_with_players(
+        deals,
+        {
+            "landlord": players_a["landlord"],
+            "landlord_up": players_b["landlord_up"],
+            "landlord_down": players_b["landlord_down"],
+        },
+    )
+    seating_b = play_deals_with_players(
+        deals,
+        {
+            "landlord": players_b["landlord"],
+            "landlord_up": players_a["landlord_up"],
+            "landlord_down": players_a["landlord_down"],
+        },
+    )
+    out = aggregate_seat_swap(seating_a, seating_b)
+    out["side_a"] = label_a
+    out["side_b"] = label_b
+    out["num_deals"] = len(deals)
+    return out
 
 
 def evaluate_seat_swap(

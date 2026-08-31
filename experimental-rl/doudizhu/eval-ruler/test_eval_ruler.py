@@ -78,6 +78,18 @@ def test_resolve_roles_random():
     }
 
 
+def test_play_deals_with_players_two_deals():
+    from eval_ruler import _load_players, play_deals_with_players
+
+    deals = generate_deals(num_games=2, seed=0)
+    before = [list(d["landlord"]) for d in deals]
+    players = _load_players("random", "random", "random")
+    out = play_deals_with_players(deals, players)
+    assert len(out) == 2
+    assert all(isinstance(won, bool) and k >= 0 for won, k in out)
+    assert [list(d["landlord"]) for d in deals] == before
+
+
 if __name__ == "__main__":
     for _name, _fn in list(globals().items()):
         if _name.startswith("test_") and callable(_fn):

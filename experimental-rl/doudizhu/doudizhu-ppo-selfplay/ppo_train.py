@@ -180,6 +180,7 @@ def ppo_update_seat(
     model: SeatAC,
     optimizer: optim.Optimizer,
     batch: list[dict],
+    max_grad_norm: float = 0.5,
 ) -> float:
     if len(batch) < 2:
         return 0.0
@@ -232,7 +233,7 @@ def ppo_update_seat(
         loss = policy_loss + VF_COEF * value_loss - ENT_COEF * entropy
         optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
         optimizer.step()
         loss_value = float(loss.item())
     return loss_value
