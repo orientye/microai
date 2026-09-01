@@ -37,6 +37,42 @@ def test_ppo_agent_returns_legal_action():
     assert action in env.legal_actions
 
 
+def test_landlord_metrics_use_paper_adp():
+    from ruler_metrics import metrics_from_landlord_results
+
+    out = metrics_from_landlord_results([(True, 0), (True, 0), (False, 1)])
+    assert out["games"] == 3
+    assert abs(out["wp"] - 2 / 3) < 1e-9
+    assert abs(out["adp"] - (1 + 1 - 2) / 3) < 1e-9
+
+
+def test_is_better_needs_wp_over_half_and_positive_adp():
+    from ruler_metrics import is_better
+
+    assert is_better(0.51, 0.1) is True
+    assert is_better(0.51, 0.0) is False
+    assert is_better(0.5, 1.0) is False
+
+
+def test_eval_landlord_vs_random_deals_plays_fixed_pickle():
+    import importlib.util
+    import pickle
+    from ruler_metrics import eval_landlord_vs_random_deals
+
+    critic_path = Path(__file__).resolve().parent.parent / "doudizhu-ppo-critic" / "ppo_train.py"
+    spec = importlib.util.spec_from_file_location("doudizhu_perfect_ppo", critic_path)
+    critic = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(critic)
+
+    eval_path = Path(__file__).resolve().parent.parent / "eval-ruler" / "eval_data.pkl"
+    with eval_path.open("rb") as f:
+        deals = pickle.load(f)[:1]
+    out = eval_landlord_vs_random_deals(critic.PerfectLegalAC(), deals)
+    assert out["games"] == 1
+    assert out["wp"] in (0.0, 1.0)
+
+
 def test_adp_terminal_reward_is_power_of_two():
     import math
 

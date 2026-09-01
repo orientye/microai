@@ -161,6 +161,7 @@ def ppo_update(
     model: PerfectLegalAC,
     optimizer: optim.Optimizer,
     batch: list[dict],
+    max_grad_norm: float = 0.5,
 ) -> float:
     z_b, x_b, mask = pad_legal_batch(
         [s["z"] for s in batch],
@@ -211,7 +212,7 @@ def ppo_update(
         loss = policy_loss + VF_COEF * value_loss - ENT_COEF * entropy
         optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
         optimizer.step()
         loss_value = float(loss.item())
     return loss_value

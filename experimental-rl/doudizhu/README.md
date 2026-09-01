@@ -11,7 +11,7 @@
 | [`doudizhu-ppo`](doudizhu-ppo/) | **第 2 步：合法集 PPO** |
 | [`doudizhu-ppo-critic`](doudizhu-ppo-critic/) | **第 3 步：完美信息 Critic** |
 | [`doudizhu-ppo-selfplay`](doudizhu-ppo-selfplay/) | **第 4 步：三位置自博弈（WP）** |
-| [`doudizhu-adp`](doudizhu-adp/) | **第 5 步：ADP + 换座对打** |
+| [`doudizhu-adp`](doudizhu-adp/) | **第 5 步：ADP 课程（地主 vs random）+ 自博弈 + 换座对打** |
 | `DouZero/` | 上游克隆（gitignore，不入库） |
 
 ```bash

@@ -6,8 +6,6 @@ from pathlib import Path
 
 import torch
 
-from ppo_train import POSITIONS, TripleModels
-
 
 class PpoSeatAgent:
     def __init__(self, model):
@@ -26,6 +24,8 @@ class PpoSeatAgent:
 
 
 def load_ppo_players(ckpt_path: str | Path) -> dict:
+    from ppo_train import POSITIONS, TripleModels
+
     path = Path(ckpt_path)
     models = TripleModels()
     state = torch.load(path, map_location="cpu", weights_only=True)
