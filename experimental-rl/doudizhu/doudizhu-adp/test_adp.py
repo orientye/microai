@@ -73,6 +73,47 @@ def test_eval_landlord_vs_random_deals_plays_fixed_pickle():
     assert out["wp"] in (0.0, 1.0)
 
 
+def test_load_landlord_curriculum_into_triple_keeps_farmers():
+    import importlib.util
+    import tempfile
+
+    import torch
+    from selfplay_init import load_landlord_curriculum
+
+    critic_path = Path(__file__).resolve().parent.parent / "doudizhu-ppo-critic" / "ppo_train.py"
+    spec = importlib.util.spec_from_file_location("doudizhu_perfect_ppo", critic_path)
+    critic = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(critic)
+
+    src = critic.PerfectLegalAC()
+    models = TripleModels()
+    farmer_before = {
+        k: v.detach().clone() for k, v in models["landlord_up"].state_dict().items()
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        ckpt = Path(tmp) / "ll.pth"
+        torch.save(src.state_dict(), ckpt)
+        load_landlord_curriculum(models, ckpt)
+    for k, v in src.state_dict().items():
+        assert torch.equal(models["landlord"].state_dict()[k], v)
+    for k, v in farmer_before.items():
+        assert torch.equal(models["landlord_up"].state_dict()[k], v)
+
+
+def test_eval_trio_vs_random_deals_seat_swap_two_games():
+    import pickle
+    from selfplay_init import eval_trio_vs_random_deals
+
+    eval_path = Path(__file__).resolve().parent.parent / "eval-ruler" / "eval_data.pkl"
+    with eval_path.open("rb") as f:
+        deals = pickle.load(f)[:1]
+    out = eval_trio_vs_random_deals(TripleModels(), deals)
+    assert out["games"] == 2
+    assert out["num_deals"] == 1
+    assert 0.0 <= out["wp_a"] <= 1.0
+
+
 def test_adp_terminal_reward_is_power_of_two():
     import math
 

@@ -3,7 +3,7 @@
 自博弈奖励改成 **ADP**（`±2^炸弹数`），梯度裁剪 **40**（对齐 DouZero）。  
 对打走第 0 步尺子：同一副牌换座，同报 WP / ADP。
 
-先 **课程**：只训地主、农民 random，best 按固定牌谱的地主 WP/ADP 存。打过 random 再 `ppo_train.py` 三家自博弈。
+先 **课程**：只训地主、农民 random，best 按固定牌谱的地主 WP/ADP 存。打过 random 再 `ppo_train.py`：地主从 `ppo_adp_landlord.pth` 初始化，前 20 次更新冻地主、只训农民，best 按换座尺子存。
 
 「更好」：**WP > 0.5 且 ADP > 0**。没下官方权重时，先对 `random`；权重放到目录后把 `--side_b` 换成该目录。
 
