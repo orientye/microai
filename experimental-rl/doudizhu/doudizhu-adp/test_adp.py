@@ -54,6 +54,14 @@ def test_is_better_needs_wp_over_half_and_positive_adp():
     assert is_better(0.5, 1.0) is False
 
 
+def test_is_strong_vs_random_needs_wp_at_least_point_nine():
+    from ruler_metrics import is_strong_vs_random
+
+    assert is_strong_vs_random(0.90, 0.1) is True
+    assert is_strong_vs_random(0.89, 1.0) is False
+    assert is_strong_vs_random(0.95, 0.0) is False
+
+
 def test_eval_landlord_vs_random_deals_plays_fixed_pickle():
     import importlib.util
     import pickle
@@ -144,6 +152,34 @@ def test_collect_vs_douzero_landlord_role_stores_only_landlord():
     assert "mc_return" in batch["landlord"][0]
     assert batch["landlord_up"] == []
     assert batch["landlord_down"] == []
+
+
+def test_expert_action_index_matches_legal_row():
+    from clone import expert_action_index
+
+    legal = [[3, 3], [4], []]
+    assert expert_action_index(legal, [4]) == 1
+    assert expert_action_index(legal, []) == 2
+
+
+def test_collect_expert_stores_douzero_index():
+    env_dir = Path(__file__).resolve().parent.parent / "doudizhu-env"
+    if str(env_dir) not in sys.path:
+        sys.path.insert(0, str(env_dir))
+    from doudizhu_env import DoudizhuEnv
+    from clone import collect_expert_games
+    from vs_douzero import load_douzero_players
+
+    dz_dir = Path(__file__).resolve().parent.parent / "DouZero" / "baselines" / "douzero_ADP"
+    env = DoudizhuEnv(objective="adp")
+    dz = load_douzero_players(dz_dir)
+    env.reset(seed=0)
+    batch = collect_expert_games(env, dz, min_games=1)
+    for pos in ("landlord", "landlord_up", "landlord_down"):
+        assert len(batch[pos]) >= 1
+        step = batch[pos][0]
+        k = step["x_batch"].shape[0]
+        assert 0 <= step["action_idx"] < k
 
 
 def test_adp_terminal_reward_is_power_of_two():

@@ -26,6 +26,10 @@ def is_better(wp: float, adp: float) -> bool:
     return wp > 0.5 and adp > 0.0
 
 
+def is_strong_vs_random(wp: float, adp: float) -> bool:
+    return wp >= 0.90 and adp > 0.0
+
+
 def make_landlord_vs_random_players(landlord_model) -> dict:
     from ppo_agent import PpoSeatAgent
 
