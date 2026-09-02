@@ -30,16 +30,27 @@ def set_landlord_trainable(models, trainable: bool) -> None:
         p.requires_grad = trainable
 
 
-def eval_trio_vs_random_deals(models, deals: list) -> dict:
+def eval_trio_vs_opponent_deals(models, deals: list, players_b: dict, label_b: str) -> dict:
     players_a = {pos: PpoSeatAgent(models[pos]) for pos in POSITIONS}
-    rnd = _load_players("random", "random", "random")
     out = evaluate_seat_swap_players(
         players_a,
-        rnd,
+        players_b,
         deals,
         label_a="ppo",
-        label_b="random",
+        label_b=label_b,
     )
     for pos in POSITIONS:
         models[pos].train()
     return out
+
+
+def eval_trio_vs_random_deals(models, deals: list) -> dict:
+    rnd = _load_players("random", "random", "random")
+    return eval_trio_vs_opponent_deals(models, deals, rnd, "random")
+
+
+def eval_trio_vs_douzero_deals(models, deals: list, dz_dir: str | Path) -> dict:
+    from vs_douzero import load_douzero_players
+
+    dz = load_douzero_players(dz_dir)
+    return eval_trio_vs_opponent_deals(models, deals, dz, str(dz_dir))

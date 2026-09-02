@@ -114,6 +114,38 @@ def test_eval_trio_vs_random_deals_seat_swap_two_games():
     assert 0.0 <= out["wp_a"] <= 1.0
 
 
+def test_assign_mc_returns_every_step_gets_same_g():
+    from vs_douzero import assign_mc_returns
+
+    bufs = {
+        "landlord": [{"x": 0}, {"x": 1}],
+        "landlord_up": [{"x": 0}],
+        "landlord_down": [{"x": 0}, {"x": 1}, {"x": 2}],
+    }
+    assign_mc_returns(bufs, landlord_g=4.0)
+    assert [s["mc_return"] for s in bufs["landlord"]] == [4.0, 4.0]
+    assert bufs["landlord_up"][0]["mc_return"] == -4.0
+    assert [s["mc_return"] for s in bufs["landlord_down"]] == [-4.0, -4.0, -4.0]
+
+
+def test_collect_vs_douzero_landlord_role_stores_only_landlord():
+    env_dir = Path(__file__).resolve().parent.parent / "doudizhu-env"
+    if str(env_dir) not in sys.path:
+        sys.path.insert(0, str(env_dir))
+    from doudizhu_env import DoudizhuEnv
+    from vs_douzero import collect_vs_douzero, load_douzero_players
+
+    dz_dir = Path(__file__).resolve().parent.parent / "DouZero" / "baselines" / "douzero_ADP"
+    env = DoudizhuEnv(objective="adp")
+    models = TripleModels()
+    dz = load_douzero_players(dz_dir)
+    batch = collect_vs_douzero(env, models, dz, min_games=1, ours="landlord")
+    assert len(batch["landlord"]) >= 1
+    assert "mc_return" in batch["landlord"][0]
+    assert batch["landlord_up"] == []
+    assert batch["landlord_down"] == []
+
+
 def test_adp_terminal_reward_is_power_of_two():
     import math
 
