@@ -49,6 +49,7 @@ micrograd 在**标量**上做反向模式自动微分：前向时把每次 `+` /
 ```text
 experimental-karpathy/
   micrograd-Analysis.md   # 本文件
+  microgpt-Analysis.md    # 相对本文的下一步：microgpt
   micrograd/              # 上游克隆（见 .gitignore）
     micrograd/
       engine.py           # Value：图 + 反向（~100 行）
@@ -593,7 +594,7 @@ python -m pytest
 
 ## 11. 缺什么、自己重写时不要抄什么
 
-这份克隆缺的：张量、广播、批量 matmul、GPU、`no_grad`、高阶导、优化器、DataLoader、checkpoint。README 指向的进阶版是 [microgpt](https://gist.github.com/karpathy/8627fe009c40f57531cb18360106ce95)（前向时存局部导数，不再为每个算子挂闭包）和配套 [explainer](https://karpathy.github.io/2026/02/12/microgpt/)。讲座版还会加 `tanh`，这份仓库的 `engine.py` **没有** `tanh`。
+这份克隆缺的：张量、广播、批量 matmul、GPU、`no_grad`、高阶导、优化器、DataLoader、checkpoint。README 指向的进阶版是 [microgpt](https://gist.github.com/karpathy/8627fe009c40f57531cb18360106ce95)，对照见 [`microgpt-Analysis.md`](microgpt-Analysis.md)（前向时存局部导数，不再为每个算子挂闭包）和配套 [explainer](https://karpathy.github.io/2026/02/12/microgpt/)。讲座版还会加 `tanh`，这份仓库的 `engine.py` **没有** `tanh`。
 
 | 可借 | 不要当脚手架继续堆 |
 |------|-------------------|
