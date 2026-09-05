@@ -47,7 +47,7 @@ micrograd 在**标量**上做反向模式自动微分：前向时把每次 `+` /
 ## 3. 目录与读序
 
 ```text
-experimental-micrograd/
+experimental-karpathy/
   micrograd-Analysis.md   # 本文件
   micrograd/              # 上游克隆（见 .gitignore）
     micrograd/
