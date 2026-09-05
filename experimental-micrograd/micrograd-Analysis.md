@@ -71,8 +71,6 @@ experimental-micrograd/
 5. `demo.ipynb` 的 `loss()` 和 SGD — hinge + `zero_grad`
 6. `test/test_engine.py` — 用 PyTorch 当标准答案
 
-`engine.py` 远重于 `nn.py`。先把 §4～§7 的菱形图和 `a + a` 读通，比抠 MLP 层数有用。
-
 下文四个维度共用这个例子（菱形：`a`、`b` 各被用两次）：
 
 ```python
