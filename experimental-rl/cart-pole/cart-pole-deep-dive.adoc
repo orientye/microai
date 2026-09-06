@@ -9,15 +9,15 @@
 
 *阅读建议：*
 
-* *零基础 / 刚入门* → 先看下面 *「新手速通」*，再读 §1 手推数字；公式章（§6～§8）可以后读。
+* *入门* → 先看下面 *「入门导读」*，再读 §1 手推数字；公式章（§6～§8）可以后读。
 * *已有一点 RL 基础* → 可从 §1 或 §3 直接进。
 
 进阶主题：
 
 * 手推一轮学习步的数值直觉
-* Soft Update vs 硬拷贝
-* 信用分配（第 80 步倒地 → 第 10 步如何背锅）
-* 过估计与 Double DQN 实验菜单
+* Soft Update vs 硬更新
+* 信用分配（第 80 步倒地如何传到第 10 步）
+* 过估计与 Double DQN 对照实验
 * 三种损失的梯度语义
 * 公式推导 + `train_step` / `compute_gae` / `ppo_update` 逐行精读
 
@@ -28,7 +28,7 @@
 算法对照以「思想 + 与源码关键路径」为主。PPO 侧实现细节（分离 Actor/Critic、Tanh、`ROLLOUT_STEPS=128`、`UPDATE_EPOCHS=4` 等）见 link:cart-pole-ppo/README.md[`cart-pole-ppo/README.md`]，勿与早期「无 GAE / 单 epoch」草稿混淆。
 ====
 
-== 新手速通（零基础先看）
+== 入门导读
 
 本节几乎不出现公式。目标：用类比搞清 *CartPole 在干什么*、*DQN 和 PPO 差在哪*、*代码从哪读起*。
 
@@ -64,7 +64,7 @@ https://gymnasium.farama.org/environments/classic_control/cart_pole/
 看到状态 → 选动作 → 得奖励 →（偶尔）学一学 → 再看新状态
 ----
 
-=== 两条学习路线：食堂选菜
+=== 两条学习路线
 
 *DQN（价值学习）* +
 先估「这个局面下，左推 / 右推分别大概值多少分」，再选分高的。 +
@@ -97,11 +97,11 @@ https://gymnasium.farama.org/environments/classic_control/cart_pole/
 重复很多局，直到经常能撑很久（例如近 10 局均分很高）
 ----
 
-=== 必懂的 5 个词（人话版）
+=== 五个基本术语
 
 [cols="1,3",options="header"]
 |===
-|词 |人话
+|词 |含义
 
 |状态（state）
 |现在车在哪、杆歪多少、各自速度多快（本环境是 4 个数）
@@ -119,13 +119,13 @@ https://gymnasium.farama.org/environments/classic_control/cart_pole/
 |用刚才的经历，把「规则」改准一点（DQN 改分数表，PPO 改选左右的习惯）
 |===
 
-=== 吓人词 → 白话小抄
+=== 后续术语
 
 后面章节会用到这些词，先混个脸熟即可：
 
 [cols="1,3",options="header"]
 |===
-|词 |白话
+|词 |含义
 
 |Q 值
 |「在这个状态下选这个动作，大概能带来多少未来分数」
@@ -146,11 +146,11 @@ https://gymnasium.farama.org/environments/classic_control/cart_pole/
 |大部分时候选当前认为最好的，偶尔随机试一下（DQN 的探索方式）
 |===
 
-=== 代码从哪读起（零基础路线）
+=== 代码阅读顺序
 
 . link:rl001.py[`rl001.py`] — 随机乱推，只看懂「状态 / 动作 / 奖励 / 一局何时结束」
 . link:cart-pole-dqn/README.md[`cart-pole-dqn/README.md`] 前半 — CartPole 问题定义与文件说明
-. *本文「新手速通」*（你在这里）→ 再看 *§1 手推一轮*（有具体数字，仍偏直觉）
+. *本文「入门导读」*（当前节）→ 再看 *§1 手推一轮*（有具体数字，仍偏直觉）
 . 想对比另一条路线 → link:cart-pole-ppo/README.md[`cart-pole-ppo/README.md`] 概述 + 与 DQN 对照表
 . 有余力再读本文 §3 信用分配、§5 损失对照；*§6～§8 公式与逐行精读可后置*
 
@@ -242,7 +242,7 @@ L_{\mathrm{mean}} = \frac{(3.0-3.97)^2+(1.5-1)^2}{2} \approx 0.60
 对 *terminated*（杆倒 / 车出界）正确；对 *truncated*（撑满 500 步）偏保守——杆其实还立着，严格 MDP 仍应 bootstrap。实现简单，会略低估「满分局」的后续价值。详见 link:cart-pole-dqn/README.md[`cart-pole-dqn/README.md`]。
 ====
 
-== 2. Soft Update 为何比硬拷更稳
+== 2. Soft Update 与硬更新
 
 *本节概要：* 标准答案本（target）不要一夜换新，每步只抄一点点在线网，训练更稳。
 
@@ -276,13 +276,13 @@ L_{\mathrm{mean}} = \frac{(3.0-3.97)^2+(1.5-1)^2}{2} \approx 0.60
 
 stem:[\tau=0.005] 时，从 0 追到约 0.5 大约要 stem:[\ln 0.5/\ln 0.995\approx 138] 步。代价是略慢；CartPole 上通常值得。`TARGET_UPDATE` 在训练脚本里已是遗留常量。
 
-== 3. 信用分配：第 80 步倒地，第 10 步怎么背锅？
+== 3. 信用分配：第 80 步倒地如何传到第 10 步
 
 *本节概要：* 杆很晚才倒，早期那一推也要被追责——但 DQN、REINFORCE、PPO 追责的方式不一样。
 
-设定：人话「第 80 步倒下」↔ 转移下标 stem:[t=79]（0-based，下图同）；关心「第 10 步」↔ stem:[t=10] 的「右推」。
+设定：口语里的「第 80 步倒下」↔ 转移下标 stem:[t=79]（0-based，下图同）；关心「第 10 步」↔ stem:[t=10] 的「右推」。
 
-=== 3.1 DQN：TD 骨牌，不是一次 stem:[\gamma^{70}]
+=== 3.1 DQN：TD 逐步回传，不是一次 stem:[\gamma^{70}]
 
 每次更新只改当前转移：
 
@@ -325,7 +325,7 @@ REIN:  logπ10 * G10（一次）
 PPO:   A10 = δ10 + γλ δ11 + … + (γλ)^69 δ79
 ----
 
-== 4. 过估计：裸 max DQN vs Double（实验菜单）
+== 4. 过估计：max DQN 与 Double DQN
 
 *本节概要：* 「取最大 Q」容易把分估虚；Double DQN 用一套网选动作、另一套网打分，缓解虚高。
 
@@ -466,7 +466,7 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 
 == 7. 逐行精读：`train_step`（DQN）
 
-*本节概要（进阶）：* 对着源码每一行，对照 §1 的手推过程。建议先完成新手速通 + §1。
+*本节概要（进阶）：* 对着源码每一行，对照 §1 的手推过程。建议先完成入门导读 + §1。
 
 文件：`cart-pole-dqn/cartpole_train.py` → `DQNAgent.train_step`。
 
@@ -623,7 +623,7 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 |一次 GAE 折进 stem:[A_t]
 |===
 
-== 10. 迷你数值速记
+== 10. 数值速记
 
 *DQN：* stem:[Q=2.0]，stem:[y=2.5] → 残差 stem:[+0.5] → 该动作 Q 升高。
 
@@ -631,11 +631,11 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 
 == 11. 相关阅读顺序建议
 
-*零基础推荐顺序：*
+*入门阅读顺序：*
 
 . link:rl001.py[`rl001.py`] — 环境与随机基线
 . link:cart-pole-dqn/README.md[`cart-pole-dqn/README.md`] 前半 — 问题是什么
-. *本文「新手速通」* — 类比与路线图
+. *本文「入门导读」* — 类比与路线图
 . *本文 §1* — 用手推数字感受一次 DQN 更新
 . link:cart-pole-ppo/README.md[`cart-pole-ppo/README.md`] — 另一条路线（PPO）概述
 . 本文 §3、§5 — 信用分配与损失对照（仍可读故事）
@@ -643,4 +643,4 @@ stem:[\lambda\to 0]：偏置大方差小；stem:[\lambda\to 1]：近 MC；本实
 
 *已有 RL 基础可直接：* §1 → §7 / §8，或 §3 → §6。
 
-扩展实验（仓库暂无脚本）：纯 REINFORCE 一页纸脚本；单网 max / 经典 target-max / Double 的 `Q_mean` 消融曲线（菜单见 §4）。
+扩展实验（仓库暂无脚本）：纯 REINFORCE 一页纸脚本；单网 max / 经典 target-max / Double 的 `Q_mean` 消融曲线（对照见 §4）。
