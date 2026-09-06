@@ -12,7 +12,7 @@
 
 ---
 
-## 1. 一句话
+## 1. 概要
 
 DouZero 用 **Deep Monte-Carlo**：自博弈打完整局，把每个 `(s, a)` 的 Q 值回归到**同一局的终局回报 G**，动作用 54 维牌矩阵编进输入，不对两万维动作头做 `max Q` 或 softmax。
 
@@ -255,11 +255,11 @@ python evaluate.py --landlord baselines/douzero_ADP/landlord.ckpt --landlord_up 
 
 ---
 
-## 9. 缺什么、自己重写时不要抄什么
+## 9. 边界与延伸
 
 这份克隆缺的：预训练权重、叫牌、论文里的 SL 人类数据、Demo GUI（在 [rlcard-showdown](https://github.com/datamllab/rlcard-showdown)）。
 
-| 可借 | 不要当第一课脚手架 |
+| 适合借鉴 | 不必沿用 |
 |------|-------------------|
 | 牌编成点数张数（54 或先 15 维） | 多进程 Actor、共享 CUDA buffer |
 | 先枚举合法动作，再给网络打分 | 三位置三套网从第一天自博弈 |

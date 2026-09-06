@@ -21,7 +21,7 @@ microgpt 拆解：xref:microgpt-Analysis.adoc[`microgpt-Analysis.adoc`]。 +
 
 '''
 
-== 1. 一句话
+== 1. 概要
 
 nanoGPT 用 *PyTorch 张量*训一个忠实的 GPT-2：可字符级也可 BPE，多层多头因果注意力，`F.cross_entropy` + AdamW，在 Shakespeare / OpenWebText 上做 next-token，再自回归采样。
 

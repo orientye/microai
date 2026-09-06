@@ -18,7 +18,7 @@ micrograd 拆解：xref:micrograd-Analysis.adoc[`micrograd-Analysis.adoc`]。 +
 
 '''
 
-== 1. 一句话
+== 1. 概要
 
 microgpt 用*同一套标量 DAG + 反向 AD*训一个 GPT-2 骨架：字符级词表、单层 4 头注意力、交叉熵、Adam，在 32k 个人名上做 next-token，再自回归采样新名字。
 
