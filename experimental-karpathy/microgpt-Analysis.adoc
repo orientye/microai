@@ -159,7 +159,7 @@ python microgpt.py          # 无 pip；首次拉 names；约 1000 step
 |===
 
 
-=== 4.1 前向把局部导冻住
+=== 4.1 前向保存局部导数
 
 micrograd 乘法：
 
@@ -240,7 +240,7 @@ micrograd 每个算子自己写一遍 `+=`；这里所有算子共用这一循�
 
 派生算子仍是宏：`-`、`/` 走 `*` 和 `**`，和 micrograd 一样。
 
-=== 4.3 `a + a`：不再靠闭包「写两次」
+=== 4.3 `a + a`：重复输入
 
 micrograd：`_prev = {a}`，闭包里 `self`、`other` 两个名字对同一对象各 `+=` 一次。
 
@@ -344,7 +344,7 @@ params = [p for mat in state_dict.values() for row in mat for p in row]
 
 和脚本打印的 `num params` 对得上。每个数仍是独立 `Value`，和 micrograd 的 337 个叶子同一套路，只是多了两个数量级的中间节点。
 
-=== 5.3 三个积木
+=== 5.3 基本模块
 
 `linear(x, w)`：对 `w` 每一行做 `sum(wi*xi)`——就是 micrograd `Neuron` 的点积，去掉 bias，批量到矩阵。
 
@@ -428,7 +428,7 @@ p.grad = 0
 
 '''
 
-== 7. 一张表对上 micrograd 的四个维度
+== 7. 与 micrograd 的四维对照
 
 用 explainer 的分支例子 `L = a*b + a`（`a=2,b=3`）：
 

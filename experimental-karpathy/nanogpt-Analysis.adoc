@@ -146,7 +146,7 @@ python sample.py --out_dir=out-shakespeare-char
 
 microgpt 每个权重是 `Value`，`state_dict` 是 `list[list[Value]]`。nanoGPT 一个权重是一张 `nn.Parameter`（`float32` 张量）。图怎么建、局部导怎么存，都不在这个仓库里。
 
-=== 4.1 `GPTConfig` 代替一堆全局数
+=== 4.1 `GPTConfig`
 
 
 .experimental-karpathy/nanogpt/model.py (L108–116)
@@ -298,7 +298,7 @@ def get_batch(split):
 
 microgpt：一个名字 `[BOS, …, BOS]`，逐步喂。这里没有 BOS 包一层；OWT 只在每篇末尾 `append(eot_token)`。字符入门的 `meta.pkl` 存 `stoi` / `itos`，`sample.py` 有它就走字符编解码，否则默认 `tiktoken` GPT-2。
 
-=== 5.2 三个积木
+=== 5.2 基本模块
 
 `LayerNorm`：自写一层，只为了 `bias=False`（PyTorch 自带的当时不行）。有可学 `weight`，可选 `bias`，`eps=1e-5`。microgpt 的 `rmsnorm` 无 gain、不减均值。
 
@@ -379,7 +379,7 @@ idx (B, T)
 
 随机猜：字符 65 类约 `-log(1/65) ≈ 4.17`；GPT-2 词表 50257 约 `10.82`。README：baby Shakespeare 最好 val ≈ 1.47；OWT 上从零训 124M 目标 ≈ 2.85。
 
-=== 6.2 训练一步（挡住 DDP 之后）
+=== 6.2 训练一步（不含 DDP）
 
 
 .experimental-karpathy/nanogpt/train.py (L290–314)
@@ -478,7 +478,7 @@ checkpoint 存 `model` / `optimizer` / `model_args` / `iter_num` / `best_val_los
 
 '''
 
-== 7. 一张表对上 microgpt 的四个维度
+== 7. 与 microgpt 的四维对照
 
 microgpt 分析用 AD 四维（结构 / 前向 / 反向 / 链式法则）。nanoGPT 把前三维交给 PyTorch，第四维公式不变。对照改成「GPT 循环的四件套」：
 

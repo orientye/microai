@@ -71,7 +71,7 @@ DouZero/
 
 ---
 
-## 4. 一局里数据怎么走
+## 4. 一局数据流
 
 ```text
 GameEnv（规则、合法出牌）
@@ -191,7 +191,7 @@ best_action = infoset.legal_actions[argmax(y_pred)]
 
 ## 7. DMC 训练
 
-### 7.1 算法核（很短）
+### 7.1 算法核
 
 `utils.py` 的 `act()`：一局结束，对该位置本局每一步写入同一个 G。
 
@@ -208,7 +208,7 @@ def compute_loss(logits, targets):
 
 `Model.forward` 的形参叫 `training`，传给子模型时对上的是 `return_value`（命名错位，不影响运行）。`learn()` 直接调子模型，不经过这个包装。
 
-### 7.2 工程（很长）
+### 7.2 工程结构
 
 TorchBeast 风格：
 
