@@ -508,15 +508,15 @@ microgpt 分析用 AD 四维（结构 / 前向 / 反向 / 链式法则）。nano
 
 '''
 
-== 8. 缺什么、不要抄什么
+== 8. 边界与延伸
 
 README 自称 _teeth over education_：能在 8×A100 上复现 124M，不是最小教学核。缺的和它自己的 todos / microgpt explainer「Real stuff」重叠：FSDP、标准 zero-shot eval、RoPE/ALiBi、生成期 KV cache、推理分页、SFT/RL。2025 后这些更多在 nanochat。
 
 
 [cols="1,1",options="header"]
 |===
-| 可借
-| 不要当脚手架继续堆
+| 适合借鉴
+| 不必沿用
 
 | `CausalSelfAttention` + pre-norm `Block` 的写法
 | 把 `generate` 的「每步重算」当成生产推理

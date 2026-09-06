@@ -458,15 +458,15 @@ p.grad = 0
 
 '''
 
-== 8. 缺什么、不要抄什么
+== 8. 边界与延伸
 
 gist 是完整算法，不是完整系统。缺的和 explainer「Real stuff」一节一致：BPE、张量/GPU、FlashAttention、RoPE/GQA/MoE、大 batch、混合精度、SFT/RL、推理分页。
 
 
 [cols="1,1",options="header"]
 |===
-| 可借
-| 不要当脚手架继续堆
+| 适合借鉴
+| 不必沿用
 
 | `_local_grads` + 统一 `backward`（比闭包干净）
 | 在这份标量 `Value` 上加层数 / 加 vocab 当「真 GPT」

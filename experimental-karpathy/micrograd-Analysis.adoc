@@ -872,15 +872,15 @@ python -m pytest
 
 '''
 
-== 11. 缺什么、自己重写时不要抄什么
+== 11. 边界与延伸
 
 这份克隆缺的：张量、广播、批量 matmul、GPU、`no_grad`、高阶导、优化器、DataLoader、checkpoint。README 指向的进阶版是 link:https://gist.github.com/karpathy/8627fe009c40f57531cb18360106ce95[microgpt]，对照见 xref:microgpt-Analysis.adoc[`microgpt-Analysis.adoc`]（前向时存局部导数，不再为每个算子挂闭包）和配套 link:https://karpathy.github.io/2026/02/12/microgpt/[explainer]。讲座版还会加 `tanh`，这份仓库的 `engine.py` *没有* `tanh`。
 
 
 [cols="1,1",options="header"]
 |===
-| 可借
-| 不要当脚手架继续堆
+| 适合借鉴
+| 不必沿用
 
 | 四个原语 + 拓扑序反向，用来建立直觉
 | 把 matmul / conv 也拆成 Python 标量循环
