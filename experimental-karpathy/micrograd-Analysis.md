@@ -50,6 +50,7 @@ micrograd 在**标量**上做反向模式自动微分：前向时把每次 `+` /
 experimental-karpathy/
   micrograd-Analysis.md   # 本文件
   microgpt-Analysis.md    # 相对本文的下一步：microgpt
+  nanogpt-Analysis.md     # 再下一步：同一套 GPT，换成 PyTorch
   micrograd/              # 上游克隆（见 .gitignore）
     micrograd/
       engine.py           # Value：图 + 反向（~100 行）

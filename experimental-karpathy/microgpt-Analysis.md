@@ -59,10 +59,12 @@ L.backward()
 experimental-karpathy/
   micrograd-Analysis.md
   microgpt-Analysis.md      # 本文件
+  nanogpt-Analysis.md       # 相对本文：同一套 GPT，换成 PyTorch
   micrograd/                # 上游 micrograd
   microgpt/
     microgpt.py             # 全文
     input.txt               # 首次运行下载 names.txt（gitignore）
+  nanogpt/                  # 上游 nanoGPT（gitignore）
 ```
 
 ```bash
@@ -156,13 +158,13 @@ microgpt：`_children = (a, a)`，`_local_grads = (1, 1)`，`zip` 循环两次�
 
 ### 4.4 和 `microai` 的位置
 
-| | micrograd | microgpt | microai |
-|--|-----------|----------|---------|
-| 局部导存在哪 | 闭包 | 节点上的数表 | `Function.backward` |
-| 数据 | 标量 | 标量 | ndarray |
-| 适合 | 看懂 AD | 在同一引擎上堆完整 GPT 循环 | 真训练 |
+| | micrograd | microgpt | nanoGPT | microai |
+|--|-----------|----------|---------|---------|
+| 局部导存在哪 | 闭包 | 节点上的数表 | PyTorch | `Function.backward` |
+| 数据 | 标量 | 标量 | 张量 | ndarray |
+| 适合 | 看懂 AD | 在同一引擎上堆完整 GPT 循环 | 真训中等 GPT | 自己的张量引擎 |
 
-microgpt 的 `Value` 更接近「把闭包求值提前」；要张量仍然得换 `microai` / PyTorch。
+microgpt 的 `Value` 更接近「把闭包求值提前」；要张量仍然得换 `microai` / PyTorch（对照 [`nanogpt-Analysis.md`](nanogpt-Analysis.md)）。
 
 ---
 
@@ -307,4 +309,4 @@ gist 是完整算法，不是完整系统。缺的和 explainer「Real stuff」�
 
 1. 把 micrograd 菱形和 explainer 的 `L=a*b+a` 都在 **两个** `Value` 上跑一遍，确认 21/16 与 4/2。
 2. 只读 `Value` 到 `backward` 结束，挡住 GPT 细节，直到能默写 `child.grad += local * v.grad`。
-3. 再读 `gpt` + 训练循环。真要训语言模型，换 PyTorch / 本仓库 `microai`，不要扩这个文件。
+3. 再读 `gpt` + 训练循环。真要训语言模型，换 PyTorch（对照 [`nanogpt-Analysis.md`](nanogpt-Analysis.md)）或本仓库 `microai`，不要扩这个文件。

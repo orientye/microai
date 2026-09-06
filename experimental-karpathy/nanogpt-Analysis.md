@@ -1,0 +1,348 @@
+# nanoGPT 源码分析（相对 microgpt）
+
+对照说明：[`nanogpt/README.md`](nanogpt/README.md)。  
+官方仓库：[karpathy/nanoGPT](https://github.com/karpathy/nanoGPT)。  
+microgpt 拆解：[`microgpt-Analysis.md`](microgpt-Analysis.md)。  
+本文件按**这份克隆的真实源码**拆：`model.py`（~330 行）+ `train.py`（~340 行）+ `sample.py`。
+
+阅读建议：
+
+- 已读过 microgpt 的 §5～§6（`gpt` / 逐步 CE / Adam / 采样）再进本文。
+- **§1～§3 先对位置**：nanoGPT 不写 AD，引擎是 PyTorch。
+- §4～§7 才是张量 GPT、并行训练、采样。
+
+历史上 nanoGPT 更早（2022，[minGPT](https://github.com/karpathy/minGPT) 的「牙齿版」）。教学上它是 microgpt 那套算法核换上张量之后的样子。README 2025-11 起指向后继 [nanochat](https://github.com/karpathy/nanochat)；本文仍拆这份克隆。
+
+---
+
+## 1. 一句话
+
+nanoGPT 用 **PyTorch 张量**训一个忠实的 GPT-2：可字符级也可 BPE，多层多头因果注意力，`F.cross_entropy` + AdamW，在 Shakespeare / OpenWebText 上做 next-token，再自回归采样。
+
+相对 microgpt，算法核没变（嵌入 → 注意力 + MLP 残差 → `lm_head` → `-log p(next)` → 采样）。变的是：每个数不再是 `Value`，一次算完整个 `B×T`；反向、Adam、设备、混合精度都交给框架。README 原话：*`train.py` 是 ~300 行训练循环，`model.py` 是 ~300 行 GPT，That's it.*
+
+---
+
+## 2. 和 microgpt 对照
+
+| | **microgpt** | **nanoGPT** |
+|--|--------------|-------------|
+| 文件 | 单文件 `microgpt.py` | `model.py` + `train.py` + `sample.py` |
+| 引擎 | 标量 `Value` + `_local_grads` | `torch.Tensor` + `loss.backward()` |
+| 网络 | 函数 `gpt(...)`，无类 | `nn.Module`：`GPT` / `Block` / `CausalSelfAttention` / `MLP` |
+| 数据粒度 | 一个 token、一个名字 | `(B, T)` 窗口，memmap 随机切片 |
+| 词表 | 字符 27（人名 + BOS） | 字符 65（Shakespeare）或 GPT-2 BPE 50257/50304 |
+| Norm | RMSNorm，无可学 gain | LayerNorm（可选 bias）+ 可学 `weight` |
+| 激活 | ReLU | GELU |
+| QKV | 三张独立矩阵 | 一张 `c_attn` 再 `split` |
+| 注意力 | 逐步、显式 KV cache | 时间并行；Flash 或 `tril` mask；**训练看不见 cache** |
+| 权重共享 | `wte` 与 `lm_head` 分开 | **weight tying**：`wte.weight is lm_head.weight` |
+| 损失 | 逐步 `-log p` 再平均 | `F.cross_entropy` 一次摊平 |
+| 优化 | 手写 Adam，线性衰减到 0 | AdamW + warmup + cosine；2D 权重才 decay |
+| 系统 | 无 | AMP / GradScaler / DDP / `torch.compile` / ckpt |
+| 任务 | 32k 人名 → 新名字 | Shakespeare 或复现 GPT-2 124M @ OWT |
+| 参数量 | **4192** | baby ~10.6M；GPT-2 **124M～1.6B** |
+
+microgpt explainer 写的 *culmination of micrograd, makemore, nanogpt*：AD 来自 micrograd，人名/字符 LM 来自 makemore，**GPT-2 结构与训练循环来自这里**。
+
+---
+
+## 3. 目录与读序
+
+```text
+experimental-karpathy/
+  micrograd-Analysis.md
+  microgpt-Analysis.md
+  nanogpt-Analysis.md      # 本文件
+  microgpt/microgpt.py
+  nanogpt/                 # 上游克隆（见 .gitignore）
+    model.py               # GPT-2：Config / Block / 前向 / generate
+    train.py               # 默认 GPT-2 124M @ OWT 的训练循环
+    sample.py              # 从 ckpt 或 gpt2* 采样
+    configurator.py        # exec 覆盖 globals
+    bench.py               # 训练循环的精简版，测速度
+    config/
+      train_shakespeare_char.py   # 入门：字符 baby GPT
+      train_gpt2.py               # 复现 124M
+      finetune_shakespeare.py     # 从 gpt2-xl 微调
+      eval_gpt2*.py
+    data/
+      shakespeare_char/prepare.py # 字符 65，写出 train.bin / meta.pkl
+      shakespeare/prepare.py      # 同一文本，GPT-2 BPE
+      openwebtext/prepare.py      # ~9B BPE token
+```
+
+```bash
+cd experimental-karpathy/nanogpt
+pip install torch numpy transformers datasets tiktoken  # 按需
+python data/shakespeare_char/prepare.py
+python train.py config/train_shakespeare_char.py --compile=False
+python sample.py --out_dir=out-shakespeare-char
+```
+
+建议读序（对着行号）：
+
+1. `GPTConfig` + `GPT.__init__`（`model.py` L108–148）— 参数树、weight tying
+2. `Block` / `CausalSelfAttention` / `MLP`（L29–106）
+3. `GPT.forward`（L170–193）
+4. `data/shakespeare_char/prepare.py` + `train.py` 的 `get_batch`（L116–131）
+5. 训练一步：`model(X,Y)` → `backward` → clip → AdamW（`train.py` L290–314）
+6. `GPT.generate`（`model.py` L305–330）+ `sample.py`
+
+先挡住 DDP / AMP / `compile`。那是效率，不是另一套 GPT。
+
+---
+
+## 4. 数据结构：相对 microgpt 换了什么
+
+microgpt 每个权重是 `Value`，`state_dict` 是 `list[list[Value]]`。nanoGPT 一个权重是一张 `nn.Parameter`（`float32` 张量）。图怎么建、局部导怎么存，都不在这个仓库里。
+
+### 4.1 `GPTConfig` 代替一堆全局数
+
+```108:116:experimental-karpathy/nanogpt/model.py
+@dataclass
+class GPTConfig:
+    block_size: int = 1024
+    vocab_size: int = 50304 # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
+    n_layer: int = 12
+    n_head: int = 12
+    n_embd: int = 768
+    dropout: float = 0.0
+    bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+```
+
+`train.py` 默认却是 `bias = False`。从零训走这条；`from_pretrained` 会强制 `bias=True, vocab_size=50257, block_size=1024` 才能对上 OpenAI 权重。
+
+microgpt 的 `n_layer=1, n_embd=16, n_head=4, block_size=16` 是同一组旋钮，旋到能在标量图上跑完。
+
+### 4.2 `nn.Module` 树，不是扁平 list
+
+```126:138:experimental-karpathy/nanogpt/model.py
+        self.transformer = nn.ModuleDict(dict(
+            wte = nn.Embedding(config.vocab_size, config.n_embd),
+            wpe = nn.Embedding(config.block_size, config.n_embd),
+            drop = nn.Dropout(config.dropout),
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            ln_f = LayerNorm(config.n_embd, bias=config.bias),
+        ))
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
+```
+
+`params = [p for mat in state_dict.values() for row in mat for p in row]` 变成 `model.parameters()`。  
+`wte` 和 `lm_head` **同一块内存**——microgpt 是两张独立的 27×16。`get_num_params(non_embedding=True)` 只扣 `wpe`，因为 token 表已经当输出层用了。
+
+残差投影 `c_proj` 另做缩放初始化：`std = 0.02 / sqrt(2 * n_layer)`（GPT-2 论文）。其余 Linear / Embedding 是 `N(0, 0.02)`。
+
+### 4.3 张量形状 `(B, T, C)`
+
+一次前向的数据是三阶张量，不是长度为 `n_embd` 的 `list[Value]`：
+
+| 符号 | 含义 | baby（`train_shakespeare_char`） | GPT-2 124M 默认 |
+|------|------|----------------------------------|-----------------|
+| `B` | batch | 64 | 12（再 × grad accum × GPU） |
+| `T` | 时间 = `block_size` | 256 | 1024 |
+| `C` | `n_embd` | 384 | 768 |
+| 词表 | | 65 | 50304（scratch）/ 50257（ckpt） |
+
+注意力里再拆头：`(B, nh, T, hs)`，`hs = C / n_head`。microgpt 的 `head_dim=4` 是同一件事，只是 `B=1, T` 逐步涨。
+
+### 4.4 和 `microai` 的位置
+
+| | microgpt | nanoGPT | microai |
+|--|----------|---------|---------|
+| AD | 标量 `_local_grads` | PyTorch | `Function.backward` + ndarray |
+| 网络 | 手写 `gpt` | 这份 `nn.Module` GPT-2 | 本仓库层 / 模型 |
+| 适合 | 看懂完整 GPT 循环 | **真训 / 微调中等 GPT** | 自己的张量引擎上练 |
+
+要看懂「梯度怎么流」回 microgpt / micrograd；要在 GPU 上出模型读这份。
+
+---
+
+## 5. 前向：从逐步 token 到 `B×T`
+
+### 5.1 数据与词表
+
+训练脚本不读原文。`prepare.py` 先写成 `uint16` 的 `train.bin` / `val.bin`，`get_batch` 用 `np.memmap` 随机切窗口：
+
+```116:125:experimental-karpathy/nanogpt/train.py
+def get_batch(split):
+    ...
+    ix = torch.randint(len(data) - block_size, (batch_size,))
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+```
+
+`y` 是 `x` 右移一位。整份语料是**一条长流**，窗口可以跨过文档边界。
+
+| 数据集 | 词表 | 规模 | 对应 |
+|--------|------|------|------|
+| `shakespeare_char` | 字符 65 | ~1.12M 字符；train 1,003,854 | 入门；和 microgpt 一样是字符级 |
+| `shakespeare` | GPT-2 BPE | train 301,966 token | 微调用 |
+| `openwebtext` | GPT-2 BPE + 文末 EOT | train ~9.04B | 复现 124M |
+
+microgpt：一个名字 `[BOS, …, BOS]`，逐步喂。这里没有 BOS 包一层；OWT 只在每篇末尾 `append(eot_token)`。字符入门的 `meta.pkl` 存 `stoi` / `itos`，`sample.py` 有它就走字符编解码，否则默认 `tiktoken` GPT-2。
+
+### 5.2 三个积木
+
+`LayerNorm`：自写一层，只为了 `bias=False`（PyTorch 自带的当时不行）。有可学 `weight`，可选 `bias`，`eps=1e-5`。microgpt 的 `rmsnorm` 无 gain、不减均值。
+
+`MLP`：`n_embd → 4 n_embd → GELU → n_embd` + dropout。和 microgpt `16 → 64 → ReLU → 16` 同形，激活和是否有 bias 不同。
+
+`CausalSelfAttention`：
+
+1. `c_attn` 一次出 QKV，再 `split`、reshape 成 `(B, nh, T, hs)`
+2. 有 `scaled_dot_product_attention` 就走 Flash：`is_causal=True`
+3. 否则 `q @ k^T / √d`，用注册好的下三角 `bias` 把未来打成 `-inf`，softmax，再 `@ v`
+4. 拼头，过 `c_proj` + residual dropout
+
+因果性在矩阵 mask / Flash 里，**不**靠逐步 append。microgpt explainer 说的「训练时 KV cache 其实一直在」——这里被藏进 `T×T` 的那次乘法。
+
+### 5.3 `GPT.forward`：一次一整段
+
+```text
+idx (B, T)
+    → wte(idx) + wpe(0..T-1)
+    → dropout
+    → 每层 Block：x + attn(ln1(x))；x + mlp(ln2(x))
+    → ln_f
+    → 训练：lm_head(x) → (B, T, V) → cross_entropy
+    → 推理：只对 x[:, [-1], :] 做 lm_head
+```
+
+相对 microgpt / GPT-2 注释里那些简化，**方向反过来**：nanoGPT 更贴 GPT-2（LayerNorm、GELU、可学 norm、可选 bias、dropout、`ln_f`）。microgpt 才是 LayerNorm→RMSNorm、去 bias、GeLU→ReLU。
+
+两处和 microgpt 不对齐，读的时候别混：
+
+| | microgpt | nanoGPT |
+|--|----------|---------|
+| 嵌入后 | 立刻 `rmsnorm`（残差还握着未归一的 `x`） | 只 dropout，第一层自己 `ln_1` |
+| 出 logits 前 | 直接 `lm_head` | 先 `ln_f` |
+| 推理 | 逐步、KV cache 活着 | `generate` **没有 cache**，每步重算整段（超长就 crop 到 `block_size`） |
+
+`from_pretrained`（L206–261）把 HuggingFace `GPT2LMHeadModel` 拷进来。OpenAI 的 `Conv1D` 权重是转置的，`c_attn` / `c_proj` / `mlp.c_fc` / `mlp.c_proj` 要 `.t()`。mask buffer 不拷。
+
+---
+
+## 6. 反向与损失：相对逐步 CE 换了什么
+
+### 6.1 一次摊平的交叉熵
+
+```184:193:experimental-karpathy/nanogpt/model.py
+        if targets is not None:
+            logits = self.lm_head(x)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+        else:
+            logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
+            loss = None
+        return logits, loss
+```
+
+`B*T` 个位置的 `-log p(target)` 在内核里平均。`ignore_index=-1` 这份默认数据用不上（`get_batch` 不写 -1），是留给有 padding 的改法。
+
+数学上仍是一个标量根，一次 `backward()` 灌满所有参数。和 microgpt `loss = (1/n) * sum(losses)` 同一目标，只是 `n = B*T`，而且位置之间前向是并行的。
+
+随机猜：字符 65 类约 `-log(1/65) ≈ 4.17`；GPT-2 词表 50257 约 `10.82`。README：baby Shakespeare 最好 val ≈ 1.47；OWT 上从零训 124M 目标 ≈ 2.85。
+
+### 6.2 训练一步（挡住 DDP 之后）
+
+```290:314:experimental-karpathy/nanogpt/train.py
+    for micro_step in range(gradient_accumulation_steps):
+        ...
+        with ctx:
+            logits, loss = model(X, Y)
+            loss = loss / gradient_accumulation_steps
+        X, Y = get_batch('train')          # 前向时已预取下一批
+        scaler.scale(loss).backward()
+    if grad_clip != 0.0:
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+    scaler.step(optimizer)
+    scaler.update()
+    optimizer.zero_grad(set_to_none=True)
+```
+
+相对 microgpt 的手写 Adam：
+
+| | microgpt | nanoGPT |
+|--|----------|---------|
+| 优化器 | Adam `β=(0.85, 0.99)` | AdamW `β=(0.9, 0.95)`，`wd=0.1` |
+| decay | 全部叶子同一待遇 | **只有 `dim>=2` 的张量** decay（矩阵 / embedding）；bias 和 LayerNorm 不 decay |
+| 学习率 | 线性从 0.01 → 0 | warmup + cosine 到 `min_lr ≈ lr/10` |
+| 梯度 | 更新后 `p.grad = 0` | `zero_grad(set_to_none=True)` |
+| 裁剪 | 无 | `grad_clip=1.0` |
+
+`configure_optimizers`（`model.py` L263–287）按维度分两组，CUDA 上尽量 `fused=True` 的 `AdamW`。`m`/`v` 在优化器状态里，和 microgpt 一样不进计算图。
+
+`get_lr`：前 `warmup_iters` 线性爬升，然后余弦降到 `min_lr`。注释按 Chinchilla：`lr_decay_iters ≈ max_iters`。Shakespeare baby 是 100 warmup / 5000 iter；124M 是 2000 / 600000。
+
+默认有效 batch（token/iter）：
+
+```text
+grad_accum * world * batch * block_size
+```
+
+`train_gpt2.py`：`12 * 1024 * 5 * 8 = 491,520`，约 0.5M token/step × 600k step ≈ 300B token。
+
+其余系统（先不必跟进实现，知道职责即可）：
+
+- `ctx`：GPU 上 `autocast`（bf16/fp16）；fp16 才开 `GradScaler`
+- `compile`：`torch.compile`；Windows 常要 `--compile=False`
+- DDP：只在最后一个 micro step 同步梯度（`require_backward_grad_sync`）
+- `configurator.py`：`exec` 配置文件，再吃 `--key=value` 改 `globals()`
+
+checkpoint 存 `model` / `optimizer` / `model_args` / `iter_num` / `best_val_loss` / `config`。`torch.compile` 可能给 key 加上 `_orig_mod.` 前缀，resume 和 `sample.py` 都要剥掉。
+
+### 6.3 推理：`generate` + `no_grad`
+
+```305:328:experimental-karpathy/nanogpt/model.py
+    @torch.no_grad()
+    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+        ...
+            logits, _ = self(idx_cond)
+            logits = logits[:, -1, :] / temperature
+            if top_k is not None:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float('Inf')
+            probs = F.softmax(logits, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)
+            idx = torch.cat((idx, idx_next), dim=1)
+```
+
+和 microgpt 一样：softmax（除温度）再抽样。多了 `top_k`（`sample.py` 默认 200）。  
+`@torch.no_grad()` 不建图——microgpt 推理仍建图，只是不 `backward`。  
+**没有 KV cache**：每步把当前上下文整段再前向一遍。这是「牙齿」里故意留下的简单；要快得自己加 cache。microgpt 反而因为逐步计算，cache 是结构的一部分。
+
+---
+
+## 7. 一张表对上 microgpt 的四个维度
+
+microgpt 分析用 AD 四维（结构 / 前向 / 反向 / 链式法则）。nanoGPT 把前三维交给 PyTorch，第四维公式不变。对照改成「GPT 循环的四件套」：
+
+| 维度 | microgpt | nanoGPT（这份源码） |
+|------|----------|---------------------|
+| 数据 | 一个名字，字符 + BOS | memmap 长流；字符 65 或 BPE；`y = x[1:]` |
+| 结构 | 标量 `linear` / `rmsnorm` / 逐步 attn | `Module` + 张量 attn；Flash 或 `tril`；weight tying |
+| 训练 | 逐步 CE + 手写 Adam | `cross_entropy` + AdamW + cosine；可选 AMP/DDP |
+| 采样 | 逐步、显式 KV、`random.choices` | `generate` 重算整段、`multinomial`、`top_k` |
+
+链式法则本身：`∂L/∂θ` 仍是一次反向扫完所有叶子。microgpt 你能看见 `child.grad += local * v.grad`；这里同一句话写成 `scaler.scale(loss).backward()`。
+
+---
+
+## 8. 缺什么、不要抄什么
+
+README 自称 *teeth over education*：能在 8×A100 上复现 124M，不是最小教学核。缺的和它自己的 todos / microgpt explainer「Real stuff」重叠：FSDP、标准 zero-shot eval、RoPE/ALiBi、生成期 KV cache、推理分页、SFT/RL。2025 后这些更多在 nanochat。
+
+| 可借 | 不要当脚手架继续堆 |
+|------|-------------------|
+| `CausalSelfAttention` + pre-norm `Block` 的写法 | 把 `generate` 的「每步重算」当成生产推理 |
+| weight tying、`c_proj` 缩放 init、AdamW 分组 decay | 从 `train.py` 抄 DDP/AMP 当「GPT 算法」 |
+| `get_batch` 的 shift-1 + memmap | 在 microgpt 标量 `Value` 上复刻 Flash / compile |
+| 字符 baby 配置验证整条循环 | `configurator.py` 的 `exec` 当配置系统范本 |
+
+由易到难：
+
+1. 对着 §5.3 的框图，在 `microgpt.py` 的 `gpt` 上标出每一块对应 `model.py` 的哪一个 `Module`（`rmsnorm`≠`LayerNorm`，`ReLU`≠`GELU`）。
+2. 只读 `GPT.forward` + `get_batch`，挡住优化器，直到能默写 `y` 为什么是 `x` 右移一位。
+3. 再读训练一步和 `generate`。真要训中等 GPT，用这份克隆或后继 nanochat；自己的张量引擎走本仓库 `microai`，不要扩 `microgpt.py`。
