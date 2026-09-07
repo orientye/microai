@@ -182,6 +182,62 @@ def test_collect_expert_stores_douzero_index():
         assert 0 <= step["action_idx"] < k
 
 
+def test_collect_dagger_stores_teacher_index_on_student_states():
+    env_dir = Path(__file__).resolve().parent.parent / "doudizhu-env"
+    if str(env_dir) not in sys.path:
+        sys.path.insert(0, str(env_dir))
+    from doudizhu_env import DoudizhuEnv
+    from dagger import collect_dagger_games
+    from vs_douzero import load_douzero_players
+
+    dz_dir = Path(__file__).resolve().parent.parent / "DouZero" / "baselines" / "douzero_ADP"
+    env = DoudizhuEnv(objective="adp")
+    models = TripleModels()
+    dz = load_douzero_players(dz_dir)
+    batch = collect_dagger_games(env, models, dz, min_games=1)
+    for pos in ("landlord", "landlord_up", "landlord_down"):
+        assert len(batch[pos]) >= 1
+        step = batch[pos][0]
+        k = step["x_batch"].shape[0]
+        assert 0 <= step["action_idx"] < k
+
+
+def test_collect_dagger_steps_student_action_not_teacher():
+    env_dir = Path(__file__).resolve().parent.parent / "doudizhu-env"
+    if str(env_dir) not in sys.path:
+        sys.path.insert(0, str(env_dir))
+    from doudizhu_env import DoudizhuEnv
+    from dagger import collect_dagger_games
+    from vs_douzero import load_douzero_players
+
+    dz_dir = Path(__file__).resolve().parent.parent / "DouZero" / "baselines" / "douzero_ADP"
+    env = DoudizhuEnv(objective="adp")
+    models = TripleModels()
+    student_played = []
+    for pos in ("landlord", "landlord_up", "landlord_down"):
+
+        def _act(obs, perfect=None, deterministic=False, _pos=pos):
+            action = env.legal_actions[0]
+            student_played.append((_pos, list(action)))
+            return 0, 0.0, 0.0
+
+        models[pos].act = _act
+
+    stepped = []
+    orig_step = env.step
+
+    def tracing_step(action):
+        stepped.append(list(action))
+        return orig_step(action)
+
+    env.step = tracing_step
+    dz = load_douzero_players(dz_dir)
+    collect_dagger_games(env, models, dz, min_games=1)
+    assert [list(a) for _p, a in student_played] == stepped
+    assert len(stepped) == len(student_played)
+    assert len(stepped) >= 1
+
+
 def test_adp_terminal_reward_is_power_of_two():
     import math
 
