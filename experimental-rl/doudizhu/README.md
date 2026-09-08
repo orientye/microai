@@ -13,6 +13,7 @@
 | [`doudizhu-ppo-selfplay`](doudizhu-ppo-selfplay/) | **第 4 步：三位置自博弈（WP）** |
 | [`doudizhu-adp`](doudizhu-adp/) | **第 5 步：ADP 课程（地主 vs random）+ 自博弈 + 换座对打** |
 | [`doudizhu-dmc`](doudizhu-dmc/) | **对照：同一尺子 + 同一特征的 DMC**（`MSE(Q, G)`，不是 PPO） |
+| [`doudizhu-dmc-scale`](doudizhu-dmc-scale/) | **加量第 1 刀：多 Actor + replay + 断点续训** |
 | `DouZero/` | 上游克隆（gitignore，不入库） |
 
 ```bash
@@ -23,6 +24,7 @@ cd ../doudizhu-ppo-critic && python test_critic.py
 cd ../doudizhu-ppo-selfplay && python test_selfplay.py
 cd ../doudizhu-adp && python test_adp.py
 cd ../doudizhu-dmc && python test_dmc.py
+cd ../doudizhu-dmc-scale && python test_scale.py
 ```
 
 准备：`git clone --depth 1 https://github.com/kwai/DouZero.git` 到本目录下的 `DouZero/`；`pip install torch numpy`。官方 ADP 权重需自行下载到 `DouZero/baselines/douzero_ADP/`。

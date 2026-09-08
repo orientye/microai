@@ -1,0 +1,6 @@
+*.pth
+*.png
+__pycache__/
+*.log
+*.tmp
+_test_actor_weights.pth
