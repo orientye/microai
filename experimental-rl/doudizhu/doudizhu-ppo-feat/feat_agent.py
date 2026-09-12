@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 
 from feat import feat_from_infoset
-from ppo_feat import POSITIONS, TripleModels
+from ppo_feat import POSITIONS, TripleModels, resolve_device
 
 
 class FeatSeatAgent:
@@ -27,10 +27,12 @@ class FeatSeatAgent:
         return legal[idx]
 
 
-def load_feat_players(ckpt_path: str | Path) -> dict:
+def load_feat_players(ckpt_path: str | Path, device=None) -> dict:
     path = Path(ckpt_path)
+    device = resolve_device(device)
     models = TripleModels()
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    models.to(device)
+    payload = torch.load(path, map_location=device, weights_only=False)
     state = payload["models"] if isinstance(payload, dict) and "models" in payload else payload
     models.load_state_dict(state)
     return {pos: FeatSeatAgent(models[pos]) for pos in POSITIONS}

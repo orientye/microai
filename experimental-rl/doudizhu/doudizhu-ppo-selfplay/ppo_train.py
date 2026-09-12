@@ -51,6 +51,7 @@ LR = _base.LR
 MAX_UPDATES = _base.MAX_UPDATES
 SAVE_THRESHOLD = _base.SAVE_THRESHOLD
 UPDATE_EPOCHS = _base.UPDATE_EPOCHS
+PPO_MINIBATCH = 32
 VF_COEF = _base.VF_COEF
 X_ACTION = _base.X_ACTION
 X_STATE = _base.X_STATE
@@ -184,17 +185,6 @@ def ppo_update_seat(
 ) -> float:
     if len(batch) < 2:
         return 0.0
-    z_b, x_b, mask = pad_legal_batch(
-        [s["z"] for s in batch],
-        [s["x_batch"] for s in batch],
-    )
-    x_crit = torch.cat(
-        [
-            torch.stack([s["x_no_action"] for s in batch]),
-            torch.stack([s["perfect"] for s in batch]),
-        ],
-        dim=-1,
-    )
     idx = torch.tensor([s["action_idx"] for s in batch], dtype=torch.long)
     old_lp = torch.tensor([s["log_prob"] for s in batch], dtype=torch.float32)
     rewards = torch.tensor([s["reward"] for s in batch], dtype=torch.float32)
@@ -218,24 +208,42 @@ def ppo_update_seat(
     advantages, returns = compute_gae(rewards, dones, values, last_value)
     advantages = normalize_adv(advantages)
 
+    n = len(batch)
     loss_value = 0.0
+    order = list(range(n))
     for _ in range(UPDATE_EPOCHS):
-        logits = legal_logits(model, z_b, x_b, mask)
-        dist = Categorical(logits=logits)
-        new_lp = dist.log_prob(idx)
-        entropy = dist.entropy().mean()
-        v_pred = model.critic_head(z_b, x_crit)
-        ratio = torch.exp(new_lp - old_lp)
-        surrogate = ratio * advantages
-        clipped = torch.clamp(ratio, 1.0 - CLIP_EPS, 1.0 + CLIP_EPS) * advantages
-        policy_loss = -torch.min(surrogate, clipped).mean()
-        value_loss = F.mse_loss(v_pred, returns)
-        loss = policy_loss + VF_COEF * value_loss - ENT_COEF * entropy
-        optimizer.zero_grad()
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
-        optimizer.step()
-        loss_value = float(loss.item())
+        random.shuffle(order)
+        for start in range(0, n, PPO_MINIBATCH):
+            sel = order[start : start + PPO_MINIBATCH]
+            mb = [batch[i] for i in sel]
+            z_b, x_b, mask = pad_legal_batch(
+                [s["z"] for s in mb],
+                [s["x_batch"] for s in mb],
+            )
+            x_crit = torch.cat(
+                [
+                    torch.stack([s["x_no_action"] for s in mb]),
+                    torch.stack([s["perfect"] for s in mb]),
+                ],
+                dim=-1,
+            )
+            logits = legal_logits(model, z_b, x_b, mask)
+            dist = Categorical(logits=logits)
+            new_lp = dist.log_prob(idx[sel])
+            entropy = dist.entropy().mean()
+            v_pred = model.critic_head(z_b, x_crit)
+            ratio = torch.exp(new_lp - old_lp[sel])
+            mb_adv = advantages[sel]
+            surrogate = ratio * mb_adv
+            clipped = torch.clamp(ratio, 1.0 - CLIP_EPS, 1.0 + CLIP_EPS) * mb_adv
+            policy_loss = -torch.min(surrogate, clipped).mean()
+            value_loss = F.mse_loss(v_pred, returns[sel])
+            loss = policy_loss + VF_COEF * value_loss - ENT_COEF * entropy
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
+            optimizer.step()
+            loss_value = float(loss.item())
     return loss_value
 
 

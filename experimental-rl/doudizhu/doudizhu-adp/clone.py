@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import random
 import sys
 from pathlib import Path
 
@@ -61,18 +62,25 @@ def collect_expert_games(env, dz: dict, min_games: int) -> dict:
 def clone_update_seat(model, optimizer, batch: list[dict]) -> float:
     if len(batch) < 1:
         return 0.0
-    z_b, x_b, mask = pad_legal_batch(
-        [s["z"] for s in batch],
-        [s["x_batch"] for s in batch],
-    )
     idx = torch.tensor([s["action_idx"] for s in batch], dtype=torch.long)
+    n = len(batch)
     loss_value = 0.0
+    order = list(range(n))
+    minibatch = 32
     for _ in range(UPDATE_EPOCHS):
-        logits = legal_logits(model, z_b, x_b, mask)
-        loss = F.cross_entropy(logits, idx)
-        optimizer.zero_grad()
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
-        optimizer.step()
-        loss_value = float(loss.item())
+        random.shuffle(order)
+        for start in range(0, n, minibatch):
+            sel = order[start : start + minibatch]
+            mb = [batch[i] for i in sel]
+            z_b, x_b, mask = pad_legal_batch(
+                [s["z"] for s in mb],
+                [s["x_batch"] for s in mb],
+            )
+            logits = legal_logits(model, z_b, x_b, mask)
+            loss = F.cross_entropy(logits, idx[sel])
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+            optimizer.step()
+            loss_value = float(loss.item())
     return loss_value

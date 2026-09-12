@@ -107,6 +107,46 @@ def test_collect_stores_feat_and_update():
         assert np.isfinite(loss)
 
 
+def test_cuda_forward_if_available():
+    import torch
+    from ppo_feat import FEAT_DIM, SeatAC, X_ACTION, X_STATE, resolve_device
+
+    if not torch.cuda.is_available():
+        print("skip test_cuda_forward_if_available")
+        return
+    device = resolve_device()
+    assert device.type == "cuda"
+    m = SeatAC(X_ACTION, X_STATE).to(device)
+    z = np.zeros((5, 162), dtype=np.float32)
+    x_batch = np.zeros((3, X_ACTION), dtype=np.float32)
+    feat = np.zeros(FEAT_DIM, dtype=np.float32)
+    obs = {
+        "z": z,
+        "x_batch": x_batch,
+        "x_no_action": np.zeros(X_STATE, dtype=np.float32),
+    }
+    idx, _lp, _v = m.act(obs, feat, deterministic=True)
+    assert idx in (0, 1, 2)
+    value = m.value(obs, feat, np.zeros(162, dtype=np.float32))
+    assert value.device.type == "cuda"
+    import sys
+    from pathlib import Path
+
+    env_dir = Path(__file__).resolve().parent.parent / "doudizhu-env"
+    if str(env_dir) not in sys.path:
+        sys.path.insert(0, str(env_dir))
+    from doudizhu_env import DoudizhuEnv
+    from ppo_feat import TripleModels, collect_games, ppo_update_seat
+
+    env = DoudizhuEnv(objective="adp")
+    models = TripleModels()
+    models.to(device)
+    opts = models.optimizers()
+    batch = collect_games(env, models, min_games=1)
+    loss = ppo_update_seat(models["landlord"], opts["landlord"], batch["landlord"])
+    assert np.isfinite(loss)
+
+
 def test_feat_agent_uses_public_fields_only():
     from feat_agent import FeatSeatAgent
     from ppo_feat import SeatAC, X_ACTION, X_STATE

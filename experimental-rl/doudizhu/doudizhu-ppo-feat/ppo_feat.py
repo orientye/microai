@@ -57,11 +57,22 @@ POSITIONS = ("landlord", "landlord_up", "landlord_down")
 ADP_GRAD_CLIP = 40.0
 
 
+def module_device(module: nn.Module) -> torch.device:
+    return next(module.parameters()).device
+
+
+def resolve_device(device: str | torch.device | None = None) -> torch.device:
+    if device is None:
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(device)
+
+
 def attach_feat(x: torch.Tensor | np.ndarray, feat: torch.Tensor | np.ndarray) -> torch.Tensor:
     if isinstance(x, np.ndarray):
         x = torch.as_tensor(x, dtype=torch.float32)
     if isinstance(feat, np.ndarray):
         feat = torch.as_tensor(feat, dtype=torch.float32)
+    feat = feat.to(device=x.device, dtype=x.dtype)
     if feat.dim() == 1:
         feat = feat.unsqueeze(0)
     if x.dim() == 1:
@@ -90,11 +101,14 @@ class SeatAC(nn.Module):
         feat: torch.Tensor | np.ndarray,
         perfect: torch.Tensor | np.ndarray,
     ) -> torch.Tensor:
-        z = torch.as_tensor(obs["z"], dtype=torch.float32).unsqueeze(0)
-        x_no = torch.as_tensor(obs["x_no_action"], dtype=torch.float32).unsqueeze(0)
-        x_pub = attach_feat(x_no, feat)
+        dev = module_device(self)
+        z = torch.as_tensor(obs["z"], dtype=torch.float32, device=dev).unsqueeze(0)
+        x_no = torch.as_tensor(obs["x_no_action"], dtype=torch.float32, device=dev).unsqueeze(0)
+        x_pub = attach_feat(x_no, feat).to(dev)
         if isinstance(perfect, np.ndarray):
-            perfect = torch.as_tensor(perfect, dtype=torch.float32)
+            perfect = torch.as_tensor(perfect, dtype=torch.float32, device=dev)
+        else:
+            perfect = perfect.to(dev)
         if perfect.dim() == 1:
             perfect = perfect.unsqueeze(0)
         return self.critic_head(z, torch.cat([x_pub, perfect], dim=-1))
@@ -107,9 +121,10 @@ class SeatAC(nn.Module):
         *,
         deterministic: bool = False,
     ) -> tuple[int, float, float]:
-        z = torch.as_tensor(obs["z"], dtype=torch.float32).unsqueeze(0)
-        x = attach_feat(obs["x_batch"], feat).unsqueeze(0)
-        mask = torch.ones(1, x.size(1), dtype=torch.bool)
+        dev = module_device(self)
+        z = torch.as_tensor(obs["z"], dtype=torch.float32, device=dev).unsqueeze(0)
+        x = attach_feat(obs["x_batch"], feat).to(dev).unsqueeze(0)
+        mask = torch.ones(1, x.size(1), dtype=torch.bool, device=dev)
         logits = legal_logits(self, z, x, mask)[0]
         dist = Categorical(logits=logits)
         idx = logits.argmax() if deterministic else dist.sample()
@@ -126,6 +141,11 @@ class TripleModels:
 
     def __getitem__(self, position: str) -> SeatAC:
         return self.models[position]
+
+    def to(self, device: str | torch.device) -> TripleModels:
+        for model in self.models.values():
+            model.to(device)
+        return self
 
     def optimizers(self) -> dict:
         return {p: optim.Adam(m.parameters(), lr=LR) for p, m in self.models.items()}
@@ -196,8 +216,13 @@ def ppo_update_seat(
 ) -> float:
     if len(batch) < 2:
         return 0.0
-    x_act = [attach_feat(s["x_batch"], s["feat"]) for s in batch]
-    z_b, x_b, mask = pad_legal_batch([s["z"] for s in batch], x_act)
+    dev = module_device(model)
+    x_act = [attach_feat(s["x_batch"], s["feat"]).to(dev) for s in batch]
+    z_b, x_b, mask = pad_legal_batch(
+        [s["z"].to(dev) for s in batch],
+        x_act,
+    )
+    mask = mask.to(dev)
     x_crit = torch.cat(
         [
             attach_feat(
@@ -207,18 +232,18 @@ def ppo_update_seat(
             torch.stack([s["perfect"] for s in batch]),
         ],
         dim=-1,
-    )
-    idx = torch.tensor([s["action_idx"] for s in batch], dtype=torch.long)
-    old_lp = torch.tensor([s["log_prob"] for s in batch], dtype=torch.float32)
-    rewards = torch.tensor([s["reward"] for s in batch], dtype=torch.float32)
-    dones = torch.tensor([float(s["done"]) for s in batch], dtype=torch.float32)
-    values = torch.tensor([s["value"] for s in batch], dtype=torch.float32)
+    ).to(dev)
+    idx = torch.tensor([s["action_idx"] for s in batch], dtype=torch.long, device=dev)
+    old_lp = torch.tensor([s["log_prob"] for s in batch], dtype=torch.float32, device=dev)
+    rewards = torch.tensor([s["reward"] for s in batch], dtype=torch.float32, device=dev)
+    dones = torch.tensor([float(s["done"]) for s in batch], dtype=torch.float32, device=dev)
+    values = torch.tensor([s["value"] for s in batch], dtype=torch.float32, device=dev)
 
-    last_value = torch.tensor(0.0)
+    last_value = torch.zeros((), device=dev)
     if not batch[-1]["done"]:
         with torch.no_grad():
             last_value = model.critic_head(
-                batch[-1]["z"].unsqueeze(0),
+                batch[-1]["z"].to(dev).unsqueeze(0),
                 torch.cat(
                     [
                         attach_feat(
@@ -228,7 +253,7 @@ def ppo_update_seat(
                         batch[-1]["perfect"].unsqueeze(0),
                     ],
                     dim=-1,
-                ),
+                ).to(dev),
             ).squeeze(0)
 
     advantages, returns = compute_gae(rewards, dones, values, last_value)

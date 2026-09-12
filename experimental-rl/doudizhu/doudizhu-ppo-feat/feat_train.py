@@ -25,7 +25,7 @@ for _p in (HERE, ENV_DIR, RULER, ADP, DOUZERO):
 from doudizhu_env import DoudizhuEnv
 from eval_ruler import _load_players
 from feat_agent import eval_trio_vs_opponent_deals
-from ppo_feat import POSITIONS, TripleModels, collect_games, ppo_update_seat
+from ppo_feat import POSITIONS, TripleModels, collect_games, ppo_update_seat, resolve_device
 
 EVAL_DATA = RULER / "eval_data.pkl"
 DZ_DIR = DOUZERO / "baselines" / "douzero_ADP"
@@ -61,12 +61,29 @@ def main() -> None:
     parser.add_argument("--eval_every", type=int, default=20)
     parser.add_argument("--eval_start", type=int, default=800)
     parser.add_argument("--vs_douzero", action="store_true")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--device", type=str, default="")
     args = parser.parse_args()
 
+    device = resolve_device(args.device or None)
+    print(f"device={device}")
     env = DoudizhuEnv(objective="adp")
     models = TripleModels()
+    models.to(device)
     opts = models.optimizers()
     best_wp, best_adp = -1.0, float("-inf")
+    start_update = 0
+    if args.resume:
+        if not SAVE_LAST.exists():
+            raise SystemExit(f"missing {SAVE_LAST}")
+        ckpt = torch.load(SAVE_LAST, map_location=device, weights_only=False)
+        models.load_state_dict(ckpt["models"])
+        for pos in POSITIONS:
+            opts[pos].load_state_dict(ckpt["optimizers"][pos])
+        start_update = int(ckpt.get("update", 0))
+        best_wp = float(ckpt.get("best_wp", best_wp))
+        best_adp = float(ckpt.get("best_adp", best_adp))
+        print(f"resume update={start_update} best_wp={best_wp:.3f} best_adp={best_adp:.3f}")
     dz_ok = (DZ_DIR / "landlord.ckpt").exists()
     use_dz = args.vs_douzero and dz_ok
     if args.vs_douzero and not dz_ok:
@@ -76,7 +93,7 @@ def main() -> None:
     mid_deals = _load_eval_deals(mid_n, args.eval_start)
     final_deals = _load_eval_deals(50, args.eval_start)
 
-    for update in range(1, args.max_updates + 1):
+    for update in range(start_update + 1, args.max_updates + 1):
         t0 = time.time()
         batch = collect_games(env, models, args.min_games)
         losses = [
