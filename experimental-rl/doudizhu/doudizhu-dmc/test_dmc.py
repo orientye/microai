@@ -84,6 +84,28 @@ def test_collect_dmc_stores_chosen_row_and_target():
         assert abs(abs(step["target"]) - 2 ** round(__import__("math").log2(abs(step["target"])))) < 1e-6
 
 
+def test_cuda_update_if_available():
+    import torch
+    from dmc import QNet, dmc_update, resolve_device
+
+    if not torch.cuda.is_available():
+        print("skip test_cuda_update_if_available")
+        return
+    device = resolve_device()
+    model = QNet(x_dim=8).to(device)
+    opt = torch.optim.RMSprop(model.parameters(), lr=1e-2)
+    batch = [
+        {
+            "z": torch.zeros(5, 162),
+            "x": torch.zeros(8),
+            "target": 2.0,
+        }
+        for _ in range(4)
+    ]
+    loss = dmc_update(model, opt, batch, max_grad_norm=40.0)
+    assert loss == loss
+
+
 if __name__ == "__main__":
     for _name, _fn in list(globals().items()):
         if _name.startswith("test_") and callable(_fn):

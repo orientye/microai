@@ -21,17 +21,24 @@ class DmcSeatAgent:
         if len(legal) == 1:
             return legal[0]
         obs = get_obs(infoset)
-        z = torch.as_tensor(obs["z_batch"], dtype=torch.float32)
-        x = torch.as_tensor(obs["x_batch"], dtype=torch.float32)
+        from dmc import module_device
+
+        dev = module_device(self.model)
+        z = torch.as_tensor(obs["z_batch"], dtype=torch.float32, device=dev)
+        x = torch.as_tensor(obs["x_batch"], dtype=torch.float32, device=dev)
         with torch.no_grad():
             q = self.model(z, x)
         return legal[int(torch.argmax(q).item())]
 
 
-def load_dmc_players(ckpt_path: str | Path) -> dict:
+def load_dmc_players(ckpt_path: str | Path, device=None) -> dict:
+    from dmc import resolve_device
+
     path = Path(ckpt_path)
+    device = resolve_device(device)
     models = TripleQ()
-    state = torch.load(path, map_location="cpu", weights_only=True)
+    models.to(device)
+    state = torch.load(path, map_location=device, weights_only=True)
     models.load_state_dict(state)
     return {pos: DmcSeatAgent(models[pos]) for pos in POSITIONS}
 

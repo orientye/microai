@@ -31,6 +31,16 @@ EPSILON = 0.01
 ADP_GRAD_CLIP = 40.0
 
 
+def module_device(module: nn.Module) -> torch.device:
+    return next(module.parameters()).device
+
+
+def resolve_device(device: str | torch.device | None = None) -> torch.device:
+    if device is None:
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(device)
+
+
 class QNet(nn.Module):
     """LSTM over move history, MLP on (h, x) → Q(s,a). Same width as our PPO scorer."""
 
@@ -61,6 +71,11 @@ class TripleQ:
     def __getitem__(self, position: str) -> QNet:
         return self.models[position]
 
+    def to(self, device: str | torch.device) -> TripleQ:
+        for model in self.models.values():
+            model.to(device)
+        return self
+
     def state_dict(self) -> dict:
         return {p: m.state_dict() for p, m in self.models.items()}
 
@@ -90,8 +105,9 @@ def epsilon_greedy_index(q: torch.Tensor, epsilon: float) -> int:
 
 
 def score_legal(model: QNet, obs: dict) -> torch.Tensor:
-    z = torch.as_tensor(obs["z_batch"], dtype=torch.float32)
-    x = torch.as_tensor(obs["x_batch"], dtype=torch.float32)
+    dev = module_device(model)
+    z = torch.as_tensor(obs["z_batch"], dtype=torch.float32, device=dev)
+    x = torch.as_tensor(obs["x_batch"], dtype=torch.float32, device=dev)
     with torch.no_grad():
         return model(z, x)
 
@@ -104,9 +120,10 @@ def dmc_update(
 ) -> float:
     if len(batch) < 1:
         return 0.0
-    z = torch.stack([s["z"] for s in batch])
-    x = torch.stack([s["x"] for s in batch])
-    target = torch.tensor([s["target"] for s in batch], dtype=torch.float32)
+    dev = module_device(model)
+    z = torch.stack([s["z"] for s in batch]).to(dev)
+    x = torch.stack([s["x"] for s in batch]).to(dev)
+    target = torch.tensor([s["target"] for s in batch], dtype=torch.float32, device=dev)
     pred = model(z, x)
     loss = F.mse_loss(pred, target)
     optimizer.zero_grad()

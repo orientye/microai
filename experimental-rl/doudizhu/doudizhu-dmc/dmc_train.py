@@ -31,6 +31,7 @@ from dmc import (
     TripleQ,
     collect_dmc_games,
     dmc_update,
+    resolve_device,
 )
 from dmc_agent import eval_trio_vs_random_deals
 from ruler_metrics import is_better
@@ -64,15 +65,19 @@ def main() -> None:
     parser.add_argument("--init", type=str, default=str(DEFAULT_INIT))
     parser.add_argument("--epsilon", type=float, default=0.1)
     parser.add_argument("--no_early_stop", action="store_true")
+    parser.add_argument("--device", type=str, default="")
     args = parser.parse_args()
 
     from doudizhu_env import DoudizhuEnv
 
+    device = resolve_device(args.device or None)
+    print(f"device={device}")
     env = DoudizhuEnv(objective="adp")
     models = TripleQ()
+    models.to(device)
     init_ckpt = Path(args.init)
     if init_ckpt.exists():
-        state = torch.load(init_ckpt, map_location="cpu", weights_only=True)
+        state = torch.load(init_ckpt, map_location=device, weights_only=True)
         models["landlord"].load_state_dict(state)
     opts = models.optimizers()
     replays = {p: Replay() for p in POSITIONS}

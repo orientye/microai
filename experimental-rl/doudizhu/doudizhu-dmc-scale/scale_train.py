@@ -24,7 +24,7 @@ for _p in (HERE, DMC, ENV_DIR, RULER, ADP, DOUZERO):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from dmc import ADP_GRAD_CLIP, POSITIONS, Replay, TripleQ, dmc_update
+from dmc import ADP_GRAD_CLIP, POSITIONS, Replay, TripleQ, dmc_update, resolve_device
 from dmc_agent import eval_trio_vs_douzero_deals, eval_trio_vs_random_deals
 from scale_actor import run_actor
 from scale_io import atomic_save, drain_queue, load_checkpoint, save_checkpoint
@@ -69,10 +69,14 @@ def main() -> None:
     parser.add_argument("--resume", type=str, default="")
     parser.add_argument("--ckpt", type=str, default=str(CKPT))
     parser.add_argument("--vs_douzero", action="store_true")
+    parser.add_argument("--device", type=str, default="")
     args = parser.parse_args()
 
+    device = resolve_device(args.device or None)
+    print(f"device={device}")
     ctx = mp.get_context("spawn")
     models = TripleQ()
+    models.to(device)
     opts = models.optimizers()
     start_update = 0
     best_wp = -1.0

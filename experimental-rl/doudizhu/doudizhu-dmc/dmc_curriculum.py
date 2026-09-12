@@ -33,6 +33,7 @@ from dmc import (
     X_LANDLORD,
     collect_landlord_vs_random,
     dmc_update,
+    resolve_device,
 )
 from dmc_agent import eval_landlord_vs_random_deals
 from ruler_metrics import is_better
@@ -69,17 +70,20 @@ def main() -> None:
     )
     parser.add_argument("--init", type=str, default="")
     parser.add_argument("--no_early_stop", action="store_true")
+    parser.add_argument("--device", type=str, default="")
     args = parser.parse_args()
 
     from doudizhu_env import DoudizhuEnv
 
+    device = resolve_device(args.device or None)
+    print(f"device={device}")
     env = DoudizhuEnv(objective="adp")
-    model = QNet(X_LANDLORD)
+    model = QNet(X_LANDLORD).to(device)
     if args.init:
         init_path = Path(args.init)
         if not init_path.exists():
             raise SystemExit(f"missing init {init_path}")
-        model.load_state_dict(torch.load(init_path, map_location="cpu", weights_only=True))
+        model.load_state_dict(torch.load(init_path, map_location=device, weights_only=True))
     opt = optim.RMSprop(model.parameters(), lr=LR)
     replay = Replay()
     deals = _load_eval_deals(args.eval_deals)
