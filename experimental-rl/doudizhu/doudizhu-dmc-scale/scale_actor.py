@@ -43,7 +43,13 @@ def run_actor(
             mtime = weights.stat().st_mtime
             if mtime > last_mtime:
                 try:
-                    state = torch.load(weights, map_location="cpu", weights_only=True)
+                    import io
+
+                    state = torch.load(
+                        io.BytesIO(weights.read_bytes()),
+                        map_location="cpu",
+                        weights_only=True,
+                    )
                     models.load_state_dict(state)
                     last_mtime = mtime
                 except (OSError, RuntimeError, EOFError):

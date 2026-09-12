@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from queue import Empty
 
@@ -58,7 +60,16 @@ def atomic_save(path: Path, obj) -> None:
     path = Path(path)
     tmp = path.with_suffix(path.suffix + ".tmp")
     torch.save(obj, tmp)
-    tmp.replace(path)
+    last_err: OSError | None = None
+    for _ in range(40):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as exc:
+            last_err = exc
+            time.sleep(0.05)
+    if last_err is not None:
+        raise last_err
 
 
 def save_checkpoint(
