@@ -31,13 +31,18 @@ cd ../doudizhu-ppo-feat && python test_feat.py
 
 准备：`git clone --depth 1 https://github.com/kwai/DouZero.git` 到本目录下的 `DouZero/`；`pip install torch numpy`。官方 ADP 权重需自行下载到 `DouZero/baselines/douzero_ADP/`。
 
-## 尺子上的数（短训）
+## 尺子上的数
 
-同一套 `get_obs` 特征、同一把换座尺子。官方 ADP 是大规模 DMC 训出来的权重。
+同一把换座尺子（50 副 / 100 局，牌谱 seed=0）。官方 ADP 是大规模 DMC 训出来的权重。
 
 | 做法 | 对 random | 对官方 DouZero-ADP |
 |------|-----------|---------------------|
 | PPO 加量自博弈 `ppo_adp_scale.pth` | WP 0.90 | WP ~0.07 |
-| DMC 自博弈 `dmc_adp.pth` | WP 0.80 | WP 0.068 |
+| 短训 DMC `dmc_adp.pth` | WP 0.80 | WP 0.068 |
+| 公开牌型 PPO `ppo_feat.pth` | WP 0.97 | WP 0.14 |
+| DMC 4 Actor × 200 次 `dmc_scale.pth`（短加量） | WP 0.82 | WP 0.09 |
+| 同上续到约 8650 次（best） | WP 0.87 | WP **0.20** |
 
-「更好」（WP>0.5 且 ADP>0）对官方：**都没有。** 短训下换公式（PPO → DMC）没有改变对官方的位置。
+「更好」（WP>0.5 且 ADP>0）对官方：**都没有。**
+
+短训换公式（PPO → DMC）不动位置；加公开牌型到 0.14；堆几千局到 0.20。本机短训到此为止，缺的是官方那种量级，不是再开一个算法目录。

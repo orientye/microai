@@ -10,3 +10,5 @@ python eval_vs.py --side_a feat --feat ppo_feat.pth --side_b ../DouZero/baseline
 ```
 
 best：`ppo_feat.pth`。续训状态：`ppo_feat_last.pth`。
+
+本机 200 次、50 副换座：对 random WP=0.97 / ADP=+1.38；对官方 WP=0.14 / ADP=−1.22。没过「更好」。

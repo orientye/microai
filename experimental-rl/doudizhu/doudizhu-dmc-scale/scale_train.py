@@ -139,13 +139,6 @@ def main() -> None:
                         )
                 losses.append(loss)
             atomic_save(ACTOR_WEIGHTS, models.state_dict())
-            save_checkpoint(
-                Path(args.ckpt),
-                models,
-                opts,
-                update,
-                extra={"best_wp": best_wp, "best_adp": best_adp},
-            )
             do_eval = update == start_update + 1 or update % args.eval_every == 0
             if do_eval or update == args.max_updates:
                 if use_dz:
@@ -156,6 +149,13 @@ def main() -> None:
                 if wp > best_wp or (wp == best_wp and adp > best_adp):
                     best_wp, best_adp = wp, adp
                     atomic_save(SAVE_BEST, models.state_dict())
+                save_checkpoint(
+                    Path(args.ckpt),
+                    models,
+                    opts,
+                    update,
+                    extra={"best_wp": best_wp, "best_adp": best_adp},
+                )
                 vs = "douzero" if use_dz else "random"
                 print(
                     f"update {update}/{args.max_updates} "

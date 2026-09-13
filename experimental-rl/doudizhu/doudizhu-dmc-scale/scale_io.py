@@ -58,18 +58,25 @@ def drain_queue(q, replays: dict[str, Replay], max_items: int | None = None) -> 
 
 def atomic_save(path: Path, obj) -> None:
     path = Path(path)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    torch.save(obj, tmp)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
     last_err: OSError | None = None
     for _ in range(40):
         try:
+            if not tmp.exists():
+                torch.save(obj, tmp)
             os.replace(tmp, path)
             return
-        except PermissionError as exc:
+        except (PermissionError, FileNotFoundError, OSError) as exc:
             last_err = exc
             time.sleep(0.05)
+    if tmp.exists():
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
     if last_err is not None:
         raise last_err
+    raise OSError(f"failed to save {path}")
 
 
 def save_checkpoint(
