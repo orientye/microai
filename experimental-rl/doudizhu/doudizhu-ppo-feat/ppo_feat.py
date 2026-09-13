@@ -55,6 +55,23 @@ FARMER_X_ACTION = 484
 FARMER_X_STATE = 430
 POSITIONS = ("landlord", "landlord_up", "landlord_down")
 ADP_GRAD_CLIP = 40.0
+BELIEF_DIM = 108
+BELIEF_COEF = 0.5
+OTHER_SEATS = {
+    "landlord": ("landlord_up", "landlord_down"),
+    "landlord_up": ("landlord", "landlord_down"),
+    "landlord_down": ("landlord", "landlord_up"),
+}
+
+
+def encode_other_hands(all_handcards: dict, position: str) -> np.ndarray:
+    """54-dim unary encoding of the two seats that are not `position`."""
+    from douzero.env.env import _cards2array
+
+    a, b = OTHER_SEATS[position]
+    return np.concatenate(
+        [_cards2array(all_handcards[a]), _cards2array(all_handcards[b])]
+    ).astype(np.float32)
 
 
 def module_device(module: nn.Module) -> torch.device:
@@ -89,11 +106,28 @@ def attach_feat(x: torch.Tensor | np.ndarray, feat: torch.Tensor | np.ndarray) -
     raise ValueError(f"bad x dim {x.dim()}")
 
 
+class BeliefHead(nn.Module):
+    def __init__(self, x_state: int):
+        super().__init__()
+        self.lstm = nn.LSTM(162, 128, batch_first=True)
+        self.mlp = nn.Sequential(
+            nn.Linear(x_state + FEAT_DIM + 128, 256),
+            nn.ReLU(),
+            nn.Linear(256, BELIEF_DIM),
+        )
+
+    def forward(self, z: torch.Tensor, x_pub: torch.Tensor) -> torch.Tensor:
+        h = self.lstm(z)[0][:, -1]
+        return self.mlp(torch.cat([h, x_pub], dim=-1))
+
+
 class SeatAC(nn.Module):
     def __init__(self, x_action: int, x_state: int):
         super().__init__()
-        self.actor_head = LstmScorer(x_action + FEAT_DIM)
+        self.x_state = x_state
+        self.actor_head = LstmScorer(x_action + FEAT_DIM + BELIEF_DIM)
         self.critic_head = LstmScorer(x_state + FEAT_DIM + PERFECT_DIM)
+        self.belief_head = BeliefHead(x_state)
 
     def value(
         self,
@@ -113,6 +147,19 @@ class SeatAC(nn.Module):
             perfect = perfect.unsqueeze(0)
         return self.critic_head(z, torch.cat([x_pub, perfect], dim=-1))
 
+    def belief_logits(
+        self,
+        obs: dict,
+        feat: torch.Tensor | np.ndarray,
+    ) -> torch.Tensor:
+        dev = module_device(self)
+        z = torch.as_tensor(obs["z"], dtype=torch.float32, device=dev)
+        if z.dim() == 2:
+            z = z.unsqueeze(0)
+        x_no = torch.as_tensor(obs["x_no_action"], dtype=torch.float32, device=dev)
+        x_pub = attach_feat(x_no, feat).to(dev)
+        return self.belief_head(z, x_pub)
+
     @torch.no_grad()
     def act(
         self,
@@ -123,7 +170,8 @@ class SeatAC(nn.Module):
     ) -> tuple[int, float, float]:
         dev = module_device(self)
         z = torch.as_tensor(obs["z"], dtype=torch.float32, device=dev).unsqueeze(0)
-        x = attach_feat(obs["x_batch"], feat).to(dev).unsqueeze(0)
+        belief = torch.sigmoid(self.belief_logits(obs, feat)).squeeze(0)
+        x = attach_feat(attach_feat(obs["x_batch"], feat), belief).to(dev).unsqueeze(0)
         mask = torch.ones(1, x.size(1), dtype=torch.bool, device=dev)
         logits = legal_logits(self, z, x, mask)[0]
         dist = Categorical(logits=logits)
@@ -181,6 +229,9 @@ def collect_games(env, models: TripleModels, min_games: int) -> dict:
             infoset = env._env.infoset
             feat = feat_from_infoset(infoset)
             perfect = encode_perfect_hands(env.all_handcards)
+            belief_target = encode_other_hands(env.all_handcards, pos)
+            with torch.no_grad():
+                belief = torch.sigmoid(models[pos].belief_logits(obs, feat)).squeeze(0).cpu()
             idx, log_prob, _v = models[pos].act(obs, feat)
             value = float(models[pos].value(obs, feat, perfect).item())
             action = env.legal_actions[idx]
@@ -194,6 +245,8 @@ def collect_games(env, models: TripleModels, min_games: int) -> dict:
                     ),
                     "feat": torch.as_tensor(feat, dtype=torch.float32),
                     "perfect": torch.as_tensor(perfect, dtype=torch.float32),
+                    "belief": belief.detach().clone(),
+                    "belief_target": torch.as_tensor(belief_target, dtype=torch.float32),
                     "action_idx": idx,
                     "log_prob": log_prob,
                     "value": value,
@@ -217,7 +270,10 @@ def ppo_update_seat(
     if len(batch) < 2:
         return 0.0
     dev = module_device(model)
-    x_act = [attach_feat(s["x_batch"], s["feat"]).to(dev) for s in batch]
+    x_act = [
+        attach_feat(attach_feat(s["x_batch"], s["feat"]), s["belief"]).to(dev)
+        for s in batch
+    ]
     z_b, x_b, mask = pad_legal_batch(
         [s["z"].to(dev) for s in batch],
         x_act,
@@ -265,12 +321,24 @@ def ppo_update_seat(
         new_lp = dist.log_prob(idx)
         entropy = dist.entropy().mean()
         v_pred = model.critic_head(z_b, x_crit)
+        x_pub = attach_feat(
+            torch.stack([s["x_no_action"] for s in batch]),
+            torch.stack([s["feat"] for s in batch]),
+        ).to(dev)
+        belief_pred = model.belief_head(z_b, x_pub)
+        belief_tgt = torch.stack([s["belief_target"] for s in batch]).to(dev)
+        belief_loss = F.binary_cross_entropy_with_logits(belief_pred, belief_tgt)
         ratio = torch.exp(new_lp - old_lp)
         surrogate = ratio * advantages
         clipped = torch.clamp(ratio, 1.0 - CLIP_EPS, 1.0 + CLIP_EPS) * advantages
         policy_loss = -torch.min(surrogate, clipped).mean()
         value_loss = F.mse_loss(v_pred, returns)
-        loss = policy_loss + VF_COEF * value_loss - ENT_COEF * entropy
+        loss = (
+            policy_loss
+            + VF_COEF * value_loss
+            + BELIEF_COEF * belief_loss
+            - ENT_COEF * entropy
+        )
         optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)

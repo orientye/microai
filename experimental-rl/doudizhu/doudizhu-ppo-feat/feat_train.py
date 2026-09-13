@@ -29,8 +29,8 @@ from ppo_feat import POSITIONS, TripleModels, collect_games, ppo_update_seat, re
 
 EVAL_DATA = RULER / "eval_data.pkl"
 DZ_DIR = DOUZERO / "baselines" / "douzero_ADP"
-SAVE_BEST = HERE / "ppo_feat.pth"
-SAVE_LAST = HERE / "ppo_feat_last.pth"
+SAVE_BEST = HERE / "ppo_feat_belief.pth"
+SAVE_LAST = HERE / "ppo_feat_belief_last.pth"
 
 
 def _load_eval_deals(n: int, start: int) -> list:

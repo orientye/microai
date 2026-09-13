@@ -40,6 +40,7 @@ cd ../doudizhu-ppo-feat && python test_feat.py
 | PPO 加量自博弈 `ppo_adp_scale.pth` | WP 0.90 | WP ~0.07 |
 | 短训 DMC `dmc_adp.pth` | WP 0.80 | WP 0.068 |
 | 公开牌型 PPO `ppo_feat.pth` | WP 0.97 | WP 0.14 |
+| 同上 + 信念头 `ppo_feat_belief.pth` | WP 0.91 | WP 0.11 |
 | DMC 4 Actor × 200 次 `dmc_scale.pth`（短加量） | WP 0.82 | WP 0.09 |
 | 同上续到约 8650 次（best） | WP 0.87 | WP **0.20** |
 

@@ -56,6 +56,32 @@ def test_lead_rocket_and_straight():
     assert straight[LEAD_NAMES.index("straight")] == 1.0
 
 
+def test_encode_other_hands_is_two_seats_not_self():
+    import sys
+    from pathlib import Path
+
+    douzero = Path(__file__).resolve().parent.parent / "DouZero"
+    if str(douzero) not in sys.path:
+        sys.path.insert(0, str(douzero))
+    from douzero.env.env import _cards2array
+    from ppo_feat import BELIEF_DIM, encode_other_hands
+
+    hands = {
+        "landlord": [3, 4],
+        "landlord_up": [5],
+        "landlord_down": [6, 6],
+    }
+    ll = encode_other_hands(hands, "landlord")
+    assert ll.shape == (BELIEF_DIM,)
+    assert np.allclose(
+        ll, np.concatenate([_cards2array([5]), _cards2array([6, 6])])
+    )
+    up = encode_other_hands(hands, "landlord_up")
+    assert np.allclose(
+        up, np.concatenate([_cards2array([3, 4]), _cards2array([6, 6])])
+    )
+
+
 def test_act_signature_has_no_perfect():
     from ppo_feat import SeatAC
 
@@ -79,7 +105,9 @@ def test_actor_forward_ignores_perfect_dim():
     idx, logp, value = m.act(obs, feat, deterministic=True)
     assert idx in (0, 1, 2)
     assert value == 0.0
-    assert m.actor_head.mlp[0].in_features == X_ACTION + FEAT_DIM + 128
+    from ppo_feat import BELIEF_DIM
+
+    assert m.actor_head.mlp[0].in_features == X_ACTION + FEAT_DIM + BELIEF_DIM + 128
     assert m.critic_head.mlp[0].in_features == X_STATE + FEAT_DIM + 162 + 128
 
 
@@ -101,6 +129,8 @@ def test_collect_stores_feat_and_update():
         assert len(batch[pos]) >= 1
         assert batch[pos][0]["feat"].shape == (FEAT_DIM,)
         assert batch[pos][0]["perfect"].shape == (162,)
+        assert batch[pos][0]["belief"].shape == (108,)
+        assert batch[pos][0]["belief_target"].shape == (108,)
         assert "perfect" not in inspect.signature(models[pos].act).parameters
     for pos in POSITIONS:
         loss = ppo_update_seat(models[pos], opts[pos], batch[pos])
