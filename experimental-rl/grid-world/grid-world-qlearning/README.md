@@ -159,7 +159,7 @@ q[state, action] += ALPHA * td_error
 | `γ` | `0.99` | 折扣：更在乎近期回报，但仍看得较远 |
 | `max_{a'} Q(s',a')` | 对下一状态取最优动作价值 | **离策略**：不管下一步实际会不会乱探索，更新都按「以后会最优地玩」来估 |
 
-对比你仓库里 CartPole 的 Double DQN：那里也是同一套 Bellman 目标，只是 `Q` 换成神经网络，并加了 replay / target net。GridWorld 用查表，**没有过估计爆炸、也无需经验回放**，所以实现极短。
+对比仓库里 CartPole 的 Double DQN：那里也是同一套 Bellman 目标，只是 `Q` 换成神经网络，并加了 replay / target net。GridWorld 用查表，**没有过估计爆炸、也无需经验回放**，所以实现极短。
 
 ### 3.3 为什么叫「离策略」
 
