@@ -124,7 +124,7 @@ return ≈ 1 + (-0.01) × (到达前的普通步数)
 ```
 
 本例最短可行路径 **8 步**：前 7 步各 `-0.01`，第 8 步到终点拿 `+1`，总回报 **0.93**。  
-训练日志里 `greedy_mean=0.930` 就说明已经学到这条最短路（或同等长度的路）。
+训练日志里 `all_starts_mean=0.930` 就说明已经学到这条最短路（或同等长度的路）。
 
 ---
 
@@ -238,7 +238,7 @@ q[state, action] += ALPHA * td_error
 ```
 
 前期必须大探索：否则 Q 全 0，Agent 可能卡在局部、很久碰不到 `G`。  
-后期降低探索：让策略稳定在已学到的短路径上。评估时用 **纯贪心**（`ε=0`），所以日志里 `train_return` 可能仍抖，而 `greedy_mean` 很稳。
+后期降低探索：让策略稳定在已学到的短路径上。评估时用 **纯贪心**（`ε=0`），所以日志里 `train_return` 可能仍抖，而 `all_starts_mean` 很稳。
 
 ---
 
@@ -247,13 +247,13 @@ q[state, action] += ALPHA * td_error
 ```text
 初始化 Q = 全零表 (25×4)
 for episode = 1 .. 4000:
-    reset → 回到起点
+    reset(random_start=True) → 随机可行起点
     while 未结束:
         用 ε-greedy 选 a
         env.step(a) → (s', r, done)
         用上面的公式更新 Q(s,a)
         s ← s'
-    每隔 200 局：纯贪心跑 20 局，打印平均回报
+    每隔 200 局：对所有可行起点做纯贪心评估，打印平均回报与成功率
 保存 q_table.npy / reward_history.png / policy_map.png
 ```
 
