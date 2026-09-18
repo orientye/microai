@@ -411,7 +411,7 @@ while not done:
 ```
 
 每局打印：`start` / `return` / `steps` / `OK` 或 `FAIL`。  
-然后 `evaluate_all_starts` 再扫一遍，打汇总：
+然后 `evaluate_all_starts` **再用同一套 21 个起点、同一套纯贪心再跑一遍**，只为打汇总（确定性，结果应和上面逐行一致）：
 
 | 字段 | 含义 |
 |------|------|
@@ -423,8 +423,8 @@ while not done:
 
 ### 6.4 随机抽几个起点打印路径（展示用）
 
-`N_RANDOM_DEMOS = 5`，`RANDOM_SEED = 1`，从上面 21 个起点里不放回抽 5 个。  
-每个 demo 同样纯贪心，但额外记下整条 `path`，并 `env.render()` 画当前格子。
+`N_RANDOM_DEMOS = 5`，`RANDOM_SEED = 1`，从上面 21 个起点里不放回抽 5 个（`rng.choice(..., replace=False)`）。  
+每个 demo **不调用** `run_greedy_episode`，而是把同样的纯贪心循环手写一遍，以便记下整条 `path`。走完后 `env.render()` 打印**终局地图**（Agent 在终点或超时停留处），并打印该起点的贪心箭头。
 
 分数**不以这 5 条为准**（样本少、只是给人看路）；看 `6.3` 的 `success` / `mean_return`。
 
