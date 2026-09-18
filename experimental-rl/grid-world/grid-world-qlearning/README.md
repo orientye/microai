@@ -365,12 +365,76 @@ Learned greedy policy (↑→↓←):
 
 ## 6. 测试脚本（`q_learning_test.py`）
 
-1. `np.load("q_table.npy")` 读表
-2. 打印整图贪心策略
-3. 对**所有可行起点**做贪心评估（成功率 / 平均回报）
-4. 再随机抽几个起点打印路径（展示用）
+测试**不再训练、也不再探索**。先读已保存的 Q 表，再全程 `argmax`（纯贪心，`ε=0`）。目的是确认：不是只从角落 `S` 碰巧会走，而是整张图都会走。
 
-用来确认：不是只从角落 `S` 碰巧会走，而是整张图都会走。
+```bash
+python q_learning_test.py
+```
+
+`main()` 按顺序做四件事，对应代码：
+
+```python
+q = np.load(Q_PATH)                    # 1) 读表
+print_policy(env, q)                   # 2) 整图箭头
+for start in env.free_cells(...):      # 3) 每个可行起点跑一局贪心
+    run_greedy_episode(env, q, start=start)
+# 再 evaluate_all_starts 打 summary
+# 4) 随机抽 5 个起点打印路径（展示用）
+```
+
+### 6.1 读表：不再改 Q
+
+`Q_PATH = "q_table.npy"`，`np.load` 得到 `shape = (25, 4)` 的数组。  
+这一步没有 `td_error`、没有 `α`、没有 ε-greedy。表是训练阶段已经学好的；测试只是**查表走路**。
+
+若文件不存在，说明还没跑过 `q_learning_train.py`。
+
+### 6.2 打印整图贪心策略
+
+`print_policy` 来自 `q_learning_train.py`。对每个格子：
+
+- 障碍 → `#`，终点 → `G`
+- 其余格子：`ACTION_ARROWS[argmax(Q[s])]`，即该格四个方向里分数最高的箭头
+
+这和 `policy_map.png` 是同一套贪心动作，只是测试脚本打在控制台。从任意可行格跟箭头走，应绕过 `#` 到达 `G`。
+
+### 6.3 全起点贪心评估（分数以这里为准）
+
+`free_cells(include_goal=False)`：5×5 共 25 格，去掉 3 个障碍和终点 `G`，剩下 **21 个可行起点**。  
+对每一个起点调用 `run_greedy_episode`：
+
+```python
+env.reset(options={"start": start})
+while not done:
+    action = int(np.argmax(q[state]))   # 纯贪心，不随机
+    state, reward, terminated, truncated, _ = env.step(action)
+```
+
+每局打印：`start` / `return` / `steps` / `OK` 或 `FAIL`。  
+然后 `evaluate_all_starts` 再扫一遍，打汇总：
+
+| 字段 | 含义 |
+|------|------|
+| `success` | 21 个起点里到达 `G` 的比例 |
+| `mean_return` | 这 21 局回报的平均 |
+| `min_return` | 最差那个起点的回报（容易暴露「某几个格子还不会走」） |
+
+全覆盖、确定、可复现。比「固定从 `S` 再跑五局」有说服力：那五局轨迹往往完全一样。
+
+### 6.4 随机抽几个起点打印路径（展示用）
+
+`N_RANDOM_DEMOS = 5`，`RANDOM_SEED = 1`，从上面 21 个起点里不放回抽 5 个。  
+每个 demo 同样纯贪心，但额外记下整条 `path`，并 `env.render()` 画当前格子。
+
+分数**不以这 5 条为准**（样本少、只是给人看路）；看 `6.3` 的 `success` / `mean_return`。
+
+### 6.5 和训练评估的关系
+
+| | 训练中每隔 200 局 | `q_learning_test.py` |
+|--|-------------------|----------------------|
+| Q 从哪来 | 当时内存里的表 | `q_table.npy` |
+| 怎么走 | 同样是 `evaluate_all_starts`（纯贪心、全起点） | 先逐起点打印，再打 summary，再加路径 demo |
+| 训练过程本身 | 仍按 ε 探索，所以 `train_return` 会抖 | 测试脚本完全不探索 |
 
 ---
 
