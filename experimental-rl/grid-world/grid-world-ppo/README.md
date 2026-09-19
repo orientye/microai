@@ -183,7 +183,7 @@ loss = policy_loss + VALUE_COEF * value_loss - ENTROPY_COEF * entropy
 
 ### 3.5 距离塑形
 
-与 DQN 相同，只作用于 **写入 rollout 的 reward**（日志里的 episode return 仍是 base reward 之和）：
+公式与直觉见 [`../grid-world-dqn/README.md`](../grid-world-dqn/README.md) **§3.3**（本目录 `shaped_reward` 与 DQN 同构）。这里只强调：塑形只作用于 **写入 rollout 的 reward**（日志里的 episode return 仍是 base reward 之和）：
 
 ```text
 Φ = −manhattan / max_dist,   max_dist = 2×(size−1) = 8
