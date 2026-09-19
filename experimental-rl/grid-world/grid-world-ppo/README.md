@@ -24,7 +24,7 @@ python inspect_fails.py          # 排查失败路径（可自改 SEED）
 
 依赖：`gymnasium`、`numpy`、`matplotlib`、`torch`。
 
-环境与观察细节与 [`../grid-world-dqn/`](../grid-world-dqn/) 共用同一套 `grid_world_env.py` 设计；值函数 / 策略梯度见 [`../../cart-pole/cart-pole-ppo/`](../../cart-pole/cart-pole-ppo/)。
+环境与观察和 [`../grid-world-dqn/`](../grid-world-dqn/) **设计相同**（各目录各有一份 `grid_world_env.py`）；值函数 / 策略梯度见 [`../../cart-pole/cart-pole-ppo/`](../../cart-pole/cart-pole-ppo/)。
 
 ---
 
@@ -137,7 +137,7 @@ PPO 的训练单位是 **update**，不是 DQN 的「每个 env step 都可能 `
    clip 策略损失 + MSE 价值损失 − 熵奖励
 ```
 
-**On-policy 含义**：用来更新的 `(s, a, log_prob)` 必须是 **采集时那个策略** 产生的；更新完这批数据就丢弃，下一 update 再重新 rollout。不能 like DQN 那样把半年前的 transition 混进 batch（除非做 importance sampling，本例未做）。
+**On-policy 含义**：用来更新的 `(s, a, log_prob)` 必须是 **采集时那个策略** 产生的；更新完这批数据就丢弃，下一 update 再重新 rollout。不会像 DQN 那样把更早 update 的 transition 放进 replay 反复抽。同一 rollout 内多 epoch 时，用 `ratio = π_new / π_old`（clip）做 importance sampling，但样本仍只来自刚采的 2048 步。
 
 ### 3.3 GAE 优势（Generalized Advantage Estimation）
 
@@ -342,7 +342,7 @@ TD + max Q             TD + replay           GAE + clip                同左
 | 样本效率 | replay 常更省环境步 | 每 update 固定 2048 新步，重复 4 epoch 学同一批 |
 | 稳定性 | 需 target / clip 等 | clip + 归一化 advantage，GridWorld 上通常较稳 |
 | 探索 | ε 衰减 | 熵 + 随机采样 |
-| 离散小动作 | 很合适 | 合适；本例与 DQN 共用环境，可直接比 `success` |
+| 离散小动作 | 很合适 | 合适；同一套 GridWorld 规则，可直接比 `success` |
 | 扩展 | 离散 Q 为主 | 连续动作、约束策略更自然 |
 
 同一 checkpoint 标准下，两者都应证明 **换种子换墙仍能到 G**；若 DQN 略高或 PPO 略高都正常，取决于训练步数与随机种子。
@@ -352,16 +352,16 @@ TD + max Q             TD + replay           GAE + clip                同左
 ## 8. 常见问题
 
 **Q: PPO 在这里学的是什么，和 DQN 一句话区别？**  
-A: DQN 学「每个动作值多少 Q」再 greedy；PPO 学 **直接输出动作分布 π(a|s)** 和 **V(s)**，用优势 `A=r+γV'−V` 告诉 Actor 哪步好、哪步差。
+A: DQN 学「每个动作值多少 Q」再 greedy；PPO 学 **直接输出动作分布 π(a|s)** 和 **V(s)**。一步 TD 残差是 `δ=r+γV'−V`；本例用 **GAE** 把多步 `δ` 合成优势 `A`，告诉 Actor 哪步好、哪步差。
 
 **Q: 为什么没有 replay buffer？**  
-A: 标准 PPO 是 **on-policy**；旧策略下的 `(s,a)` 若用新策略算 loss，需要 importance ratio + clip，本实现只保留 **当前 rollout** 内的 `log π_old`。
+A: 标准 PPO 是 **on-policy**：只拿刚采的 rollout。同一批数据上多 epoch 时，用 `ratio = exp(log π_new − log π_old)` + clip 校正策略已变；没有跨 update 的 replay buffer。
 
 **Q: 训练还在随机探索吗？**  
 A: 是。`select_action(..., greedy=False)` 从 **掩码后的 Categorical** 采样；评估 / 测试才 `greedy=True`（argmax logits）。
 
 **Q: 塑形、visited 通道、avoid_revisit 和 DQN 一样吗？**  
-A: **环境相同**；塑形公式与系数相同；测试时同样用 `avoid_revisit` 防绕圈。PPO 额外把 **visited 写进 obs**，Actor 可以自己学，不必只靠测试启发式。
+A: **两边都一样**：同一套奖励 / 塑形 / 4 通道（含 `visited`）/ 测试时 `avoid_revisit`。网络都能从 `visited` 通道学「来过了」；`avoid_revisit` 是评估启发式，不是 PPO 独有。
 
 **Q: `update` 和 `episode` 怎么对应？**  
 A: 一次 update 固定采 **2048 步**，中间可能结束多个 episode；日志 `episodes≈` 是累计 episode 数，不是 update 数。
