@@ -184,7 +184,7 @@ def evaluate(
     """Evaluate on hardest setting: 3 obstacles, random reachable starts.
 
     Pass a fixed ``seed`` so successive training checkpoints are scored on the
-    same layout suite (avoids 149/150 vs 150/150 jitter looking like regression).
+    same layout suite (avoids 299/300 vs 300/300 jitter looking like regression).
     """
     returns = []
     successes = 0

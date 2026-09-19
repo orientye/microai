@@ -193,8 +193,8 @@ loss = F.mse_loss(q_values, target)
 
 | 机制 | 本例取值 | 作用 |
 |------|----------|------|
-| Replay Buffer | 容量 `50000`，满 `2000` 条后开始学 | 打破样本相关性 |
-| Batch | `128` | 小批量 SGD |
+| Replay Buffer | 容量 `50000`，至少 `2000` 条后开始学 | 打破样本相关性 |
+| Batch | `128` | 小批量更新（Adam） |
 | Target 软更新 | `τ = 0.005`，每步 `target ← τ·policy + (1-τ)·target` | 稳定目标 |
 | 梯度裁剪 | `10.0` | 防爆炸 |
 | Optimizer | Adam, `lr=5e-4` | |
@@ -230,11 +230,19 @@ train_r = base_reward + SHAPE_COEF × F     SHAPE_COEF = 0.1
 本例 ε 按 **梯度步数**（每从 buffer 抽 batch 更新一次算一步）**指数衰减**，不是按 episode：
 
 ```text
-ε: 1.0  ──指数衰减──►  0.02
-     step 0 … 25000 …
+ε(t) = 0.02 + (1.0 − 0.02) · exp(−t / 25000)
 ```
 
-前期必须大探索；后期接近纯贪心。选动作时始终在 `legal_actions()` 返回的集合里探索 / argmax。
+`25000` 是时间常数，不是「走到第 25000 步就变成 0.02」：
+
+| 梯度步 `t` | ε（约） |
+|------------|---------|
+| `0` | `1.00` |
+| `25000` | `0.38` |
+| `50000` | `0.15` |
+| 更久 | 渐近到 `0.02` |
+
+buffer 未满 `2000` 条时还不更新，ε 一直停在 `1.0`。选动作时始终在 `legal_actions()` 返回的集合里探索 / argmax。
 
 ### 3.6 微调阶段（`--finetune` / 训练结束自动跑）
 
@@ -300,7 +308,7 @@ for episode = 1 .. 6000:
 | `MIN_MEMORY_SIZE` | `2000` | 开始更新前最少样本 |
 | `TAU` | `0.005` | target 软更新系数 |
 | `EPS_START / END` | `1.0 / 0.02` | |
-| `EPS_DECAY_STEPS` | `25000` | 按梯度步指数衰减 |
+| `EPS_DECAY_STEPS` | `25000` | ε 指数衰减的时间常数（不是线性降到 `0.02` 的步数） |
 | `EVAL_EVERY` | `200` | |
 | `EVAL_LAYOUTS` | `300` | 训练内评估图数 |
 | `EVAL_SEED` | `12345` | **固定**评估流，success% 可跨 checkpoint 对比 |
@@ -321,7 +329,7 @@ for episode = 1 .. 6000:
 | 用途 | 看收敛、少抖动、存 best 模型 | 证明 **换种子换墙** 仍能到 |
 | 动作 | greedy + legal + `avoid_revisit` | 同左 |
 
-训练里 `success=150/150` 只说明「在这 300 张固定考题上全过」，不代表万能；`dqn_test.py` 的 `overall success` + `mean ± std` 才是泛化成绩。
+训练里 `success=300/300` 只说明「在这 300 张固定考题上全过」，不代表万能；`dqn_test.py` 的 `overall success` + `mean ± std` 才是泛化成绩。
 
 ### 5.2 控制台示例
 
@@ -379,7 +387,7 @@ python dqn_test.py
 
 - 步数打满 50（绕圈或走太远）
 - `max_visit` 很高（在少数格子间来回）
-- `bumps` 多（仍试图穿墙）
+- `bumps` 多（少见：评估有动作掩码，一般不会主动撞墙；被围死时才会回退到 4 个方向）
 
 ---
 
