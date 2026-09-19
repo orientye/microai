@@ -99,6 +99,41 @@ Agent 仍是从起点区域走到右下角终点 `G`，中间有 **3 个随机�
 
 5×5 很小，扁平 MLP **也能训到能走**；随机换墙之后，CNN 通常 **用更少样本** 把「看邻格绕路」泛化开。本例 `QNet` 并不是纯卷积：两层 `Conv2d` 提局部特征，再 flatten 进 MLP 头输出 4 个 Q——先利用空间结构，再做全局决策。
 
+**代码里三处对上上面的说法：**
+
+1. 环境先按 **2D 平面** 填通道，再 `ravel` 拼成 Gym 向量（邻接被压扁，但格子顺序仍是行优先）：
+
+```python
+# grid_world_env.py _observe()
+agent[self.pos] = 1.0
+obstacle[r, c] = 1.0          # 仍是 (5,5) 地图
+return np.concatenate([agent.ravel(), obstacle.ravel(), goal.ravel(), visited.ravel()])
+```
+
+2. 网络 **第一件事** 是把 `(batch, 100)` 还原成 `(batch, 4, 5, 5)`，否则 `Conv2d` 不知道哪 25 个数是一张图：
+
+```python
+# dqn_train.py QNet.forward
+if x.dim() == 2:
+    x = x.view(-1, self.n_channels, self.grid_size, self.grid_size)
+```
+
+3. **空间归纳偏置** 就在这两层卷积：`kernel_size=3` = 看自己和 8 邻格；`padding=1` = 输出仍是 5×5，边上也有核。同一套 `Conv2d` 权重扫遍全图（权值共享）。若改成扁平 MLP，这两层换成 `nn.Linear(100, …)`，就再也没有「3×3 邻域 / 换位置复用」：
+
+```python
+self.conv = nn.Sequential(
+    nn.Conv2d(n_channels, 32, kernel_size=3, padding=1),
+    nn.ReLU(),
+    nn.Conv2d(32, 64, kernel_size=3, padding=1),
+    nn.ReLU(),
+)
+# 卷积之后才 flatten，用普通 Linear 出 4 个 Q
+x = self.conv(x)
+return self.head(x.flatten(1))
+```
+
+对照：扁平写法会是 `Linear(100, 128)` 直接吃 `_observe()` 的向量，**没有** `view` 回网格，也 **没有** `Conv2d`。本例刻意先卷积、再 `flatten` 进 `head`。
+
 ---
 
 ## 2. 环境怎么建模（`grid_world_env.py`）
