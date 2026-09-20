@@ -262,17 +262,26 @@ target = rewards + GAMMA * next_q * (1.0 - dones)
 loss = F.mse_loss(q_values, target)
 ```
 
+上式里的 `(states, actions, rewards, next_states, dones)` **不是刚走的那一步**，而是从 **Replay Buffer（经验池）** 里随机抽出来的一批历史。这就是 DQN 里的 **experience replay**：先把交互存下来，学的时候 **重放**。
+
+每走一步写入一条 transition `(s, a, r, s', done)`（本例 `r` 是塑形后的 `train_r`，见 §3.3）。池子是定长队列（`deque`，满了丢最旧的）。buffer 里至少 `2000` 条才开始更新；之后每步 `sample(128)` 抽一批，用上面的 Double DQN 公式算损失。实现见 `dqn_train.py` 的 `ReplayBuffer`。
+
+**为什么不「边走边立刻学这一步」：**
+
+1. **打破时间相关。** 连续几十步都在同一张图、同一段轨迹上；若按时间顺序每步更新，梯度会偏向刚走过的那条路。随机抽旧数据，等于把很多局、很多地图混在一起学。
+2. **一条经验可以学多次。** 同一条「撞墙前一步」会被抽到多次；表格 Q 也能反复改同一个 `(s,a)`，网络必须靠 replay 才能反复喂同一段经验。
+
+表格 Q-learning 里 **一格一格往回传** 的直觉，在这里变成：**随机抽历史 transition，用同一套 TD 目标更新网络权重**；看不到「格子 23 那一行被改了」，但终点附近的好决策会通过 replay 慢慢泛化到相似图样。
+
 此外还有 DQN 标配：
 
 | 机制 | 本例取值 | 作用 |
 |------|----------|------|
-| Replay Buffer | 容量 `50000`，至少 `2000` 条后开始学 | 打破样本相关性 |
-| Batch | `128` | 小批量更新（Adam） |
+| Replay Buffer | 容量 `50000`，至少 `2000` 条后开始学 | 存 transition，随机重放，打破样本相关性 |
+| Batch | `128` | 每次从 buffer 抽这么多条一起更新（Adam） |
 | Target 软更新 | `τ = 0.005`，每步 `target ← τ·policy + (1-τ)·target` | 稳定目标 |
 | 梯度裁剪 | `10.0` | 防爆炸 |
 | Optimizer | Adam, `lr=5e-4` | |
-
-表格 Q-learning 里 **一格一格往回传** 的直觉，在这里变成：**随机抽历史 transition，用同一套 TD 目标更新网络权重**；看不到「格子 23 那一行被改了」，但终点附近的好决策会通过 replay 慢慢泛化到相似图样。
 
 ### 3.3 距离塑形（Potential-based shaping）
 
@@ -330,7 +339,7 @@ buffer 未满 `2000` 条时还不更新，ε 一直停在 `1.0`。选动作时�
 - 每 1000 局刷新 hard pool
 - 最多 `4000` 局
 
-目的：把课程末期仍卡住的布局 **针对性补练**。
+目的：把课程末期仍卡住的布局 **针对性补练**。这里的 **hard-replay** 是「再玩一遍失败地图」，和 §3.2 的 **experience replay**（从 buffer 随机抽 transition）不是同一件事：前者决定 **下一局环境怎么 reset**，后者决定 **梯度用哪些历史 `(s,a,r,s')` 来算**。hard case 走出来的步子仍然 `push` 进同一个 Replay Buffer。
 
 ---
 
