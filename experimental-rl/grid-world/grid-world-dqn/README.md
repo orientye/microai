@@ -270,6 +270,27 @@ loss = F.mse_loss(q_values, target)
 
 交互时 `choose_action` 只在合法动作上 argmax；**TD 目标里的 `argmax` 没有掩码**，四个 Q 里裸选。合法动作上的行为和对非法动作的 Q 估计不是同一套。
 
+#### Double 是什么含义
+
+这里的 **double** 不是「因为有两套网络才叫 Double」。Vanilla DQN 也有 `policy_net` + `target_net`；差别在 **怎么用它们算 TD 目标 `y`**。
+
+Vanilla DQN 的目标是：
+
+```text
+y = r + γ · max_{a'} target_net(s')[a']
+```
+
+`max` 里叠了两步：先在 `target_net` 上挑最大的动作，再用**同一个** `target_net` 给这个动作打分。Q 估计有噪声时，`max` 会系统性地偏高（overestimation）：网络越爱夸某个动作，就越容易反复选它，偏差会滚起来。
+
+Double DQN 把这两步拆开（上式 / 上段代码）：
+
+| 职责 | 谁来做 | 本例 |
+|------|--------|------|
+| **选**下一步跟哪个 `a*` | 当前网络 | `a* = argmax policy_net(s')` |
+| **估**这个 `a*` 值多少 | 目标网络 | `y = r + γ · target_net(s')[a*]` |
+
+所以 **double = 双重估计 / 职责分离**：选和估不再是同一次有偏的 `max`。表格版 Double Q-learning（Hasselt, 2010）是两张表 `Q_A` / `Q_B` 互相评估；DQN 里用 online / target 近似同一套分工。
+
 #### 为什么需要 replay（experience replay）
 
 表格 Q 可以反复改同一个 `(s, a)` 的一格；**神经网络** 一次更新会动整网参数，若 **每走一步就立刻用这一步反传**，数据和学习过程都绑在同一条时间线上，往往不稳、也浪费样本。经典 DQN 的做法是 **off-policy + replay**：先把交互存进池子，学的时候 **随机重放** 历史 transition，再用上面的 Double DQN 公式算 batch 损失。
