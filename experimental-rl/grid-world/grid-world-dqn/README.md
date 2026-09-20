@@ -272,7 +272,7 @@ loss = F.mse_loss(q_values, target)
 | 梯度裁剪 | `10.0` | 防爆炸 |
 | Optimizer | Adam, `lr=5e-4` | |
 
-表格 Q-learning 里 **一格一格往回传** 的直觉，在这里变成：**随机抽历史 transition，用同一套 TD 目标更新网络权重**；你看不到「格子 23 那一行被改了」，但终点附近的好决策会通过 replay 慢慢泛化到相似图样。
+表格 Q-learning 里 **一格一格往回传** 的直觉，在这里变成：**随机抽历史 transition，用同一套 TD 目标更新网络权重**；看不到「格子 23 那一行被改了」，但终点附近的好决策会通过 replay 慢慢泛化到相似图样。
 
 ### 3.3 距离塑形（Potential-based shaping）
 
