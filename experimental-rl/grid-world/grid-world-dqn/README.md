@@ -9,15 +9,15 @@
 | 文件 | 作用 |
 |------|------|
 | `grid_world_env.py` | 随机可解布局；观察为 **4 通道** 拼成的向量 |
-| `dqn_train.py` | CNN + 课程学习 + 距离塑形 + 动作掩码；结束可自动微调 |
+| `dqn_train.py` | CNN + 课程学习 + 距离塑形 + 动作掩码；结束自动微调 |
 | `dqn_test.py` | **随机多种子**评估；可选对照表格 Q |
 | `inspect_fails.py` | 打印失败局的路径（排查卡死 / 绕圈） |
-| `dqn_random_layout.pth` | 最佳策略网络权重 |
-| `dqn_reward_history.png` | 训练曲线 |
+| `dqn_random_layout.pth` | **训练产物**（`.gitignore`）：评估最优的策略权重 |
+| `dqn_reward_history.png` | **训练产物**（`.gitignore`）：回报曲线；完整跑完后是**微调**阶段的图，见 §5.3 |
 
 ```bash
 cd experimental-rl/grid-world/grid-world-dqn
-python dqn_train.py              # 课程学习（结束后会自动微调）
+python dqn_train.py              # 课程 6000 局 + 自动微调 4000 局（无开关跳过）
 python dqn_train.py --finetune   # 仅微调（需已有 checkpoint）
 python dqn_test.py               # 最终成绩：随机 5 种子 × 每种子 200 张图
 python inspect_fails.py          # 排查失败路径（可自改 SEED）
@@ -33,9 +33,9 @@ python inspect_fails.py          # 排查失败路径（可自改 SEED）
 
 Agent 仍是从起点区域走到右下角终点 `G`，中间有 **3 个随机障碍 `#`**（训练时可先用更少障碍做课程）。目标仍是 **尽快到终点**。
 
-与固定地图版不同：**每局 `reset()` 都会重新采样障碍位置**（BFS 保证 `S→G` 有路），起点也从「能到达 G 的格子」里随机抽。因此 Agent 不能只背「格子 7 该往右」，而要学会 **看墙绕路**。
+与固定地图版不同：**每局 `reset()` 都会重新采样障碍位置**。连通检查是 **固定左上 `(0,0) → G`**（不是即将抽到的随机起点）；通过后再从「能到达 G 的格子」里随机抽起点。因此 Agent 不能只背「格子 7 该往右」，而要学会 **看墙绕路**。
 
-这里的 **「有路」** 指：只走上下左右、不出界、不踩 `#`，存在至少一条格路径从 `S` 到 `G`。环境用 **BFS（广度优先搜索）** 在摆好障碍后做连通检查，不通就重采（最多 300 次），避免整局根本到不了终点。流程见 §2.1。
+这里的 **「有路」** 指：只走上下左右、不出界、不踩 `#`，存在至少一条格路径从 `(0,0)` 到 `G`。环境用 **BFS（广度优先搜索）** 在摆好障碍后做连通检查，不通就重采（最多 300 次；仍不通则本局 **零障碍**），避免整局根本到不了终点。流程见 §2.1。
 
 | 概念 | 本例取值 |
 |------|----------|
@@ -44,8 +44,8 @@ Agent 仍是从起点区域走到右下角终点 `G`，中间有 **3 个随机�
 | 奖励 `r` | 见下表（环境 **base reward**；训练 replay 另加距离塑形，§3.3） |
 | `terminated` | 踩到 `G` |
 | `truncated` | 超过 **50** 步仍未到达 |
-| 撞边界 / 撞障碍 | **位置不变**，额外 `bump_penalty` |
-| 重访格子 | 在 `step_penalty` 之外再扣 `revisit_penalty × 已访问次数` |
+| 撞边界 / 撞障碍 | **位置不变**，环境给 `bump_penalty`（DQN 训练/测试有动作掩码，几乎踩不到） |
+| 重访格子 | 在 `step_penalty` 之外再扣 `revisit_penalty × prev_visits` |
 
 奖励（环境 `step()` 返回的 **base reward**，不含塑形）：
 
@@ -53,10 +53,10 @@ Agent 仍是从起点区域走到右下角终点 `G`，中间有 **3 个随机�
 |------|------|
 | 到终点 | `+1.0` |
 | 普通一步（成功移动） | `-0.01` |
-| 撞墙 / 出界 | `-0.05` |
-| 重访格子 | 额外 `-0.03 × prev_visits`（访问越多扣越多） |
+| 撞墙 / 出界 | `-0.05`（环境规则；带掩码的 DQN 轨迹里几乎不出现） |
+| 重访格子 | 额外 `-0.03 × prev_visits`（访问越多扣越多；撞墙原地不动时也会叠上） |
 
-**Agent 要优化的仍是上表 base reward**（尽快到 G、少步数、少撞墙/绕圈）。训练脚本还会对写入 replay 的回报加 **距离塑形**，只为了给 TD 更稠密的「是否靠近 G」信号、**加快训练收敛**，不改变 `step()` 返回值，测试也不塑形；公式与动机见 §3.3。
+**Agent 要优化的仍是上表 base reward**（尽快到 G、少步数、少绕圈）。训练脚本还会对写入 replay 的回报加 **距离塑形**，只为了给 TD 更稠密的「是否靠近 G」信号、**加快训练收敛**，不改变 `step()` 返回值，测试也不塑形；公式与动机见 §3.3。塑形 ≠ 重访惩罚：后者是环境真实扣分，评估也算。
 
 观察（`4 × 5 × 5`，网络内部 reshape 成卷积输入）：
 
@@ -65,7 +65,7 @@ Agent 仍是从起点区域走到右下角终点 `G`，中间有 **3 个随机�
 | `agent` | 当前位置为 `1`，其余为 `0` |
 | `obstacle` | 障碍格为 `1` |
 | `goal` | 终点格为 `1` |
-| `visited` | 本局各格访问次数 ÷ 5，clip 到 `[0,1]`（打破 A↔B / 原地撞墙死循环） |
+| `visited` | 本局各格访问次数 ÷ 5，clip 到 `[0,1]`（打破 A↔B 来回；带掩码时几乎不会原地撞墙） |
 
 和表格 Q-learning 的关键差别：
 
@@ -103,6 +103,8 @@ Agent 仍是从起点区域走到右下角终点 `G`，中间有 **3 个随机�
 
 5×5 很小，扁平 MLP **也能训到能走**；随机换墙之后，CNN 通常 **用更少样本** 把「看邻格绕路」泛化开。本例 `QNet` 并不是纯卷积：两层 `Conv2d` 提局部特征，再 flatten 进 MLP 头输出 4 个 Q——先利用空间结构，再做全局决策。
 
+感受野要算一下：一层 `3×3` 看 3 格，两层 stride-1 叠起来是 **5 格**，已经等于整张地图。所以「局部」主要体现在 **第一层邻域 + 整图权值共享**，不是第二层还只看身边 8 格。
+
 **代码里三处对上上面的说法：**
 
 1. 环境先按 **2D 平面** 填通道，再 `ravel` 拼成 Gym 向量（邻接被压扁，但格子顺序仍是行优先）：
@@ -124,7 +126,7 @@ if x.dim() == 2:
 
 3. **`QNet` 分两段：卷积提局部特征，全连接头出四个 Q。** 接上面的 `view`，`forward` 先走 `conv`，再走 `head`：
 
-   - **前半 `conv`（空间归纳偏置在这里）**：两层 `Conv2d`，`kernel_size=3` = 每个输出格看自己和 8 邻格；`padding=1` = 特征图仍是 5×5，边上也有核。同一套卷积核权重扫遍全图（权值共享）。若改成扁平 MLP，这两层通常换成 `Linear(100, …)`，就再也没有「3×3 邻域 / 换位置复用」。
+   - **前半 `conv`（空间归纳偏置在这里）**：两层 `Conv2d`，`kernel_size=3` = 第一层每个输出格看自己和 8 邻格；`padding=1` = 特征图仍是 5×5。同一套卷积核权重扫遍全图（权值共享）。第二层感受野已是整张 5×5。若改成扁平 MLP，这两层通常换成 `Linear(100, …)`，就再也没有「3×3 邻域 / 换位置复用」。
    - **后半 `head`（全局决策）**：卷积输出形状是 `(batch, 64, 5, 5)`——仍是「每格一份特征」，还不是四个动作的 Q。所以要 `flatten(1)` 压成长向量，再用 **普通全连接 `nn.Linear`**（相对 Conv 而言没有邻域结构）接到 128 维，最后一层 `Linear(128, 4)` 一次给出 **四个标量**：`Q(↑), Q(→), Q(↓), Q(←)`。选动作时对这 4 个数 `argmax` 即可（对应上文「查 Q → `QNet(obs)[action]`」，但 forward 通常一次算齐四个）。
 
 ```python
@@ -164,6 +166,8 @@ return self.head(x.flatten(1))
         │
    不通 → 重采样（最多 300 次）
         │
+   仍不通 → 本局障碍为空集
+        │
         ▼
   用 BFS 从 G 反搜，得到所有「能到 G」的格子
         │
@@ -171,9 +175,9 @@ return self.head(x.flatten(1))
   random_start=True 时，起点只从上述集合里采样
 ```
 
-这样不会出现「起点被困死」或「根本到不了终点」的无效局。
+这样不会出现「起点被困死」或「根本到不了终点」的无效局。注意：`_path_exists` 检查的是 **固定 `self.start=(0,0)` → G**，不是稍后抽到的随机起点；随机起点另由 `cells_reaching_goal()` 保证能到 G。
 
-BFS 做法：从种子格出发，把「一步能走到的相邻空格」依次入队扩展；`_path_exists` 从 `start` 搜，能碰到 `goal` 即 `S→G` 连通；`cells_reaching_goal` 从 `G` 反搜，得到随机起点可用的格子集合（实现见 `grid_world_env.py`）。
+BFS 做法：从种子格出发，把「一步能走到的相邻空格」依次入队扩展；`_path_exists` 从 `(0,0)` 搜，能碰到 `goal` 即连通；`cells_reaching_goal` 从 `G` 反搜，得到随机起点可用的格子集合（实现见 `grid_world_env.py`）。
 
 ### 2.2 观察向量
 
@@ -209,12 +213,14 @@ obs = [ agent.ravel() | obstacle.ravel() | goal.ravel() | visited.ravel() ]
 
 `step()` 返回 `(obs', r, terminated, truncated, info)`，其中 `info` 含 `manhattan`（到 G 的曼哈顿距离）、`bumped`、`revisits`，供塑形和调试使用。
 
+训练和评估都在 `legal_actions()` 里选动作：静态地图上只要上一步是合法移动，来时的格子仍空着，**几乎不可能被围死**。因此 `bump_penalty` 写在环境里，带掩码的 DQN 轨迹里基本见不到；`dqn_test.py` 的表格 Q 对照**没有**掩码，才会撞墙。原地 bump 时 `prev_visits≥1`，还会叠加重访惩罚。
+
 ### 2.4 合法动作与 `avoid_revisit`
 
 `legal_actions()`：只返回「能走进自由格」的动作（不选必然撞墙/出界的方向）。  
-`legal_actions(avoid_revisit=True)`：若存在 **从未访问或访问更少** 的合法邻格，则 **只在这些里选**——评估 / 测试时用来打破贪心 A↔B 来回 oscillation。
+`legal_actions(avoid_revisit=True)` 分两段：先只留 **从未访问**（`visit < 1`）的合法邻格；若没有，再只留 **访问次数最少** 的那些。评估 / 测试用来打破贪心 A↔B 来回 oscillation。
 
-训练选动作：ε-greedy，但在 **合法动作子集** 里随机 / argmax。  
+训练选动作：ε-greedy，但在 **合法动作子集** 里随机 / argmax（**不用** `avoid_revisit`）。  
 评估 / 测试：纯贪心 + 合法掩码 + `avoid_revisit=True`。
 
 ---
@@ -262,6 +268,8 @@ target = rewards + GAMMA * next_q * (1.0 - dones)
 loss = F.mse_loss(q_values, target)
 ```
 
+交互时 `choose_action` 只在合法动作上 argmax；**TD 目标里的 `argmax` 没有掩码**，四个 Q 里裸选。合法动作上的行为和对非法动作的 Q 估计不是同一套。
+
 #### 为什么需要 replay（experience replay）
 
 表格 Q 可以反复改同一个 `(s, a)` 的一格；**神经网络** 一次更新会动整网参数，若 **每走一步就立刻用这一步反传**，数据和学习过程都绑在同一条时间线上，往往不稳、也浪费样本。经典 DQN 的做法是 **off-policy + replay**：先把交互存进池子，学的时候 **随机重放** 历史 transition，再用上面的 Double DQN 公式算 batch 损失。
@@ -269,7 +277,7 @@ loss = F.mse_loss(q_values, target)
 | 若不用 replay、每步立刻学 | 用 replay 之后 |
 |---------------------------|----------------|
 | 连续几十步在同一张图、同一段轨迹上，梯度 **追着刚走过的分布改**，易震荡或过拟合某条路 | 从池里 **随机抽** 128 条，很多局、很多地图混在一起，接近 **打乱后的 mini-batch** |
-| 某条 `(s, a)` 可能 **只出现一次** 就丢了 | 同一条「撞墙前一步」可被 **反复抽到**，提高样本利用率 |
+| 某条 `(s, a)` 可能 **只出现一次** 就丢了 | 同一条「绕错 / 重访」可被 **反复抽到**，提高样本利用率 |
 | `target_net` 与 `policy_net` 的目标都在 **极相关的相邻步** 上算，二者容易 **互相追着跑** | batch 里的 `s、 s'` 来自不同时间/不同局，TD 目标相对 **更稳**（仍配合下文 target 软更新） |
 
 **在本例 grid-world 上尤其明显：** 每局 **随机换墙**（状态是整图 obs），回报又 **很稀疏**（多数步 `-0.01`，到 G 才 `+1`）。没有 replay，网络大部分时间只在「当前这一张图的连续步子」上更新，少数成功局里学到的绕障很难 **混进** 其它地图的梯度里；replay 把「曾经在某张图上走对的一步」和「现在在别张图上的步子」放进同一 batch，才更容易泛化。
@@ -293,6 +301,7 @@ loss = F.mse_loss(q_values, target)
 | Target 软更新 | `τ = 0.005` | 每次成功的 `train_step`（buffer≥2000 后约每个 env 步一次）软更新 `target ← τ·policy + (1-τ)·target` |
 | 梯度裁剪 | `10.0` | 防爆炸 |
 | Optimizer | Adam, `lr=5e-4` | |
+| 设备 | **CPU only** | 训练脚本没有 `.cuda()`；checkpoint 也 `map_location="cpu"` |
 
 ### 3.3 距离塑形（Potential-based shaping）
 
@@ -302,9 +311,10 @@ loss = F.mse_loss(q_values, target)
 Φ(s) = -manhattan(s, G) / max_dist        max_dist = 2×(size-1) = 8
 F(s, s') = γ·Φ(s') - Φ(s)
 train_r = base_reward + SHAPE_COEF × F     SHAPE_COEF = 0.1
+代码：若 done（terminated 或 truncated），Φ(s') 置 0
 ```
 
-靠近终点 → `Φ` 变大（负得少）→ 塑形项为正，鼓励缩短路径；这是 **potential-based**，不改变最优策略（在折扣一致的前提下）。
+靠近终点 → `Φ` 变大（负得少）→ 塑形项为正，鼓励缩短路径。到达 G 时曼哈顿已是 0，`Φ(s')=0` 与理论一致。**超时截断**时人还在远处，代码仍把 `Φ(s')` 当成 0（和终点一样），会给一步虚假正塑形；potential-based「不改变最优策略」只对 **到达终点、折扣一致** 成立，不宜直接套到 truncation。
 
 **为什么要塑形：** 随机换图 + 绕墙时，若只靠「到 G 才 +1」，多数 transition 的 TD 信号几乎一样（全是小负步长），网络很难从探索里分辨「哪一步更好」，学习会很慢。**塑形只改 replay 里用于更新的 `train_r`**，给「是否更接近 G」一条稠密反馈，主要 **缩短探索期**；环境 `step()` 与评估时的回报仍是 base reward（见 `shaped_reward()` in `dqn_train.py`）。曼哈顿距离 **看不见墙**，直线近未必能走通，故 `SHAPE_COEF=0.1` 较小，绕路仍靠 obs 里的障碍与终点 `+1` 学（见下文 FAQ）。
 
@@ -318,7 +328,7 @@ train_r = base_reward + SHAPE_COEF × F     SHAPE_COEF = 0.1
 | `2001 … 4000` | `2` |
 | `4001 … 6000` | `3` |
 
-评估始终用 **最难设置：3 障碍 + 随机起点**，方便看「真正任务」上的进度。
+评估始终用 **最难设置：3 障碍 + 随机起点**，方便看「真正任务」上的进度。因此前 2000 局课程还在 1 墙时，eval `success` 低是正常的。
 
 ### 3.5 ε-greedy 探索
 
@@ -341,16 +351,20 @@ buffer 未满 `2000` 条时还不更新，ε 一直停在 `1.0`。选动作时�
 
 ### 3.6 微调阶段（`--finetune` / 训练结束自动跑）
 
-主训练 6000 局结束后，`dqn_train.py` 会 **自动** 再跑一轮 hard-only 微调（也可单独 `python dqn_train.py --finetune`）：
+主训练 6000 局结束后，`dqn_train.py` 会 **自动** 再跑一轮 hard-only 微调（也可单独 `python dqn_train.py --finetune`）。**没有命令行开关跳过**，只能改代码。
 
 - 全程 **3 障碍**
 - 学习率降到 `1e-4`
-- 先用贪心策略 **探测 300 局**，收集当前仍会失败的 `(obstacles, start)` 对
+- ε **重设** 为 `0.15`，按时间常数 `12000` 降到 `0.01`（不接着主训练末尾已接近 `0.02` 的 ε）
+- `SEED=1`（主训练是 `SEED=0`），`step_count` 归零
+- 先在固定评估流上打 **baseline**，再用贪心 **探测 300 局**，收集仍失败的 `(obstacles, start)` 对
 - 之后每局以概率 `35%` **重放这些 hard case**，否则随机新图
-- 每 1000 局刷新 hard pool
+- 每 1000 局刷新 hard pool（同样 300 局探测）
 - 最多 `4000` 局
+- 只在评估分 **严格高于** 当前 best 时覆盖 `dqn_random_layout.pth`（主训练打平也会存）
+- 结束时 **覆盖** `dqn_reward_history.png`（即使权重没变得更好）
 
-目的：把课程末期仍卡住的布局 **针对性补练**。这里的 **hard-replay** 是「再玩一遍失败地图」，和 §3.2 的 **experience replay**（从 buffer 随机抽 transition）不是同一件事：前者决定 **下一局环境怎么 reset**，后者决定 **梯度用哪些历史 `(s,a,r,s')` 来算**。微调阶段里，hard 局与随机新图走出的步子都 `push` 进 **同一个** `agent.memory`（没有为 hard case 单独再建一个池）；但 `finetune()` 会 **新建** `DQNAgent`，经验池从空重新攒，**不会**接着主训练 6000 局里已经存满的那 5 万条（只加载 `dqn_random_layout.pth` 权重）。
+目的：把课程末期仍卡住的布局 **针对性补练**。这里的 **hard-replay** 是「再玩一遍失败地图」，和 §3.2 的 **experience replay**（从 buffer 随机抽 transition）不是同一件事：前者决定 **下一局环境怎么 reset**，后者决定 **梯度用哪些历史 `(s,a,r,s')` 来算**。微调阶段里，hard 局与随机新图走出的步子都 `push` 进 **同一个** `agent.memory`（没有为 hard case 单独再建一个池）；但 `finetune()` 会 **新建** `DQNAgent`，经验池从空重新攒，**不会**接着主训练 6000 局里已经存满的那 5 万条（只加载 `dqn_random_layout.pth` 权重）。buffer 再满 `2000` 条之前不更新，这段时间 ε 停在 `0.15`。
 
 ---
 
@@ -369,9 +383,10 @@ for episode = 1 .. 6000:
         若 buffer 足够 → sample batch → Double DQN 更新 + 软更新 target + 衰减 ε
     每隔 200 局：
         固定 EVAL_SEED 上跑 300 张 3-障碍图（greedy + avoid_revisit）
-        打印 success / mean_return；更优则保存 dqn_random_layout.pth
-保存 dqn_reward_history.png
-自动进入 finetune()（同上 hard-replay 逻辑）
+        打印 success / mean_return
+        分数 = success_rate + 0.001 × mean_return；≥ 当前 best 则保存（打平也覆盖）
+保存 dqn_reward_history.png          ← 课程曲线，随即被微调覆盖
+自动进入 finetune()（hard-replay；曲线图写成微调阶段；权重仅严格更好才覆盖）
 ```
 
 ### 4.1 单局何时结束
@@ -387,10 +402,10 @@ for episode = 1 .. 6000:
 
 | 阶段 | 局数 | 说明 |
 |------|------|------|
-| 课程主训练 | `6000` | 跑满即进入微调 |
-| Hard 微调 | `4000` | 主训练后自动执行；或 `--finetune` 单独跑 |
+| 课程主训练 | `6000` | 跑满即进入微调；`SEED=0` |
+| Hard 微调 | `4000` | 主训练后**自动**执行（无 CLI 跳过）；或 `--finetune` 单独跑；`SEED=1` |
 
-没有 early stopping；看 `success` 和曲线判断是否已够用。
+没有 early stopping。全程 **CPU**。看 `success` 和曲线判断是否已够用；完整跑完后曲线图是微调阶段的。
 
 ### 4.3 超参数速查
 
@@ -408,6 +423,12 @@ for episode = 1 .. 6000:
 | `EVAL_LAYOUTS` | `300` | 训练内评估图数 |
 | `EVAL_SEED` | `12345` | **固定**评估流，success% 可跨 checkpoint 对比 |
 | `SHAPE_COEF` | `0.1` | 距离塑形强度 |
+| `SEED` | `0` | 主训练随机种子；微调用 `SEED+1` |
+| `FINETUNE_LR` | `1e-4` | 微调学习率 |
+| `FINETUNE_EPS_START / END` | `0.15 / 0.01` | 微调重新设 ε |
+| `FINETUNE_EPS_DECAY` | `12000` | 微调 ε 衰减时间常数 |
+| `HARD_MIX` | `0.35` | 微调局中重放 hard case 的概率 |
+| `GRAD_CLIP` | `10.0` | |
 
 ---
 
@@ -436,14 +457,17 @@ episode= 400  n_obs=1  eps=0.842  train_return=-0.320
   saved dqn_random_layout.pth (success=85%, mean=0.450)
 ```
 
-- `train_return`：本局 **环境原始回报** 之和（含探索乱走、撞墙），会抖。
-- `eval_mean` / `success`：固定 300 张 **3 障碍** 图上的贪心成绩，更可信。
+- `train_return`：本局 **环境原始回报** 之和（含探索乱走、重访），会抖。带掩码时几乎不含撞墙。
+- `eval_mean` / `success`：固定 300 张 **3 障碍** 图上的贪心成绩，更可信。前 2000 局课程还是 1 墙，这条 eval 仍考 3 墙。
 - `n_obs`：当前课程阶段的障碍数。
+- 存盘看 `success_rate + 0.001 * mean_return`，所以 success 相同、mean 略高也会覆盖。
 
 ### 5.3 `dqn_reward_history.png`
 
-- 蓝线：训练回报滑动平均（仍有 ε 探索，会抖）。
-- 橙点：每隔 200 局的 **eval mean**（3 障碍固定种子），看真实任务进度。
+`_save_curve` 始终写到这一个文件名。`python dqn_train.py` 会先存课程曲线，**微调结束再覆盖**，所以完整跑完后图上是 **hard-replay 微调的 4000 局**，不是课程 6000 局。
+
+- 蓝线：训练回报滑动平均，窗口 **50**（`MA50`；仍有 ε 探索，会抖）。
+- 橙线：每隔 200 局的 **eval mean**（3 障碍固定种子，点+连线），看真实任务进度。
 
 ---
 
@@ -466,13 +490,15 @@ python dqn_test.py
 6) 若存在 ../grid-world-qlearning/q_table.npy → 同一批种子上跑表格 Q 对照
 ```
 
+地图上的 `S` **永远标左上 `(0,0)`**，不一定是本局起点；本局起点看打印的 `start=`。`A` 才是 Agent。
+
 ### 6.1 为什么多种子
 
 固定一套考题容易 **过拟合评估集**。随机种子意味着 **布局流也换**，`worst seed` 暴露最差情况；这比「同一张图跑 5 次」更有说服力。
 
 ### 6.2 表格 Q 对照
 
-若已训练过 qlearning，测试脚本会用 **相同种子、相同 200 局/种子** 跑表格贪心（只看格子 id，**不看墙通道**）。布局一变，表格 Q 成功率通常会 **明显低于 DQN**——直观说明「状态必须包含墙信息才能泛化」。
+若已训练过 qlearning，测试脚本会用 **相同种子、相同 200 局/种子** 跑表格贪心（只看格子 id，**不看墙通道**，也 **不用** 合法动作掩码 / `avoid_revisit`）。布局一变，表格 Q 成功率通常会 **明显低于 DQN**——直观说明「状态必须包含墙信息才能泛化」。
 
 ### 6.3 排查失败（`inspect_fails.py`）
 
@@ -482,7 +508,7 @@ python dqn_test.py
 
 - 步数打满 50（绕圈或走太远）
 - `max_visit` 很高（在少数格子间来回）
-- `bumps` 多（少见：评估有动作掩码，一般不会主动撞墙；被围死时才会回退到 4 个方向）
+- `bumps` 多：对 **带掩码的 DQN** 几乎不应出现（静态图上合法走法围不死）；对照表格 Q 才会经常撞墙。若 DQN 失败局里 bumps>0，优先怀疑掩码没生效或打印的是别的策略。
 
 ---
 
@@ -495,7 +521,8 @@ grid-world-qlearning     本例 grid-world-dqn          CartPole Double DQN
 状态=格子 id             状态=4 通道网格              状态=4 维连续向量
 固定地图                 随机地图 + 课程                固定动力学
 无 replay                Replay + target              同左
-无塑形                   曼哈顿塑形 + 重访惩罚          通常无塑形
+无塑形、无重访惩罚        曼哈顿塑形（只进 replay）     通常无塑形
+                         + 环境重访惩罚（评估也算）
 ```
 
 建议认知顺序：
@@ -503,7 +530,7 @@ grid-world-qlearning     本例 grid-world-dqn          CartPole Double DQN
 1. [`../grid-world-qlearning/`](../grid-world-qlearning/)：看清 Q、TD、ε-greedy、回报回传
 2. **本例**：状态变「看图」、Q 变网络、加 replay / Double / 课程 / 塑形
 3. [`../../cliff-walking/cliff-walking-q-sarsa/`](../../cliff-walking/cliff-walking-q-sarsa/)：离策略 Q-learning vs 在策略 SARSA
-4. CartPole DQN / PPO：连续控制、更复杂动力学
+4. [`../../cart-pole/cart-pole-dqn/`](../../cart-pole/cart-pole-dqn/)：连续 4 维状态、MLP Double DQN
 
 ---
 
@@ -516,19 +543,25 @@ A: 仍是在学 **策略意义上的 Q 值**（每个动作好坏），但 Q 由
 A: 训练评估用 **固定** `EVAL_SEED` 的 300 张图，方便对比 checkpoint；测试用 **新随机种子** × 更多图。测试分数通常更严、更代表泛化。
 
 **Q: 为什么需要 `visited` 通道和 `avoid_revisit`？**  
-A: 纯贪心在某些图上会在两格间 **无限来回** 或 **原地撞墙**，直到 50 步截断。访问信息让网络和环境都能「知道来过了」；测试时再优先走未访问格，打破循环。
+A: 纯贪心在某些图上会在两格间 **无限来回**，直到 50 步截断。访问信息让网络知道「来过了」；测试时再优先走未访问格，打破循环。带动作掩码时几乎不会原地撞墙，循环主要是 A↔B。
 
 **Q: 塑形会不会让 Agent 只追曼哈顿距离、忽略绕墙？**  
-A: 塑形系数 `0.1` 较小，且是 potential-based；主信号仍是到 G 的 `+1`。它主要 **缩短探索期**，不是替代终点奖励。
+A: 塑形系数 `0.1` 较小；主信号仍是到 G 的 `+1`。它主要 **缩短探索期**，不是替代终点奖励。超时截断时代码把 `Φ(s')` 置 0，理论上会给虚假正塑形，本例地图小、影响有限。
 
 **Q: 跑 `dqn_train.py` 为什么要等很久？**  
-A: 默认 `6000 + 4000` 局，且每步可能做梯度更新；CNN + replay 比表格 Q 慢一个数量级是正常的。可先改小 `MAX_EPISODES` / `FINETUNE_EPISODES` 做 smoke test。
+A: 默认 `6000 + 4000` 局，且 buffer 满后每步做梯度更新；脚本跑在 **CPU** 上（没有用 GPU）。CNN + replay 比表格 Q 慢一个数量级是正常的。可先改小 `MAX_EPISODES` / `FINETUNE_EPISODES` 做 smoke test。没有 CLI 跳过自动微调。
+
+**Q: 完整训练后曲线图怎么不像课程 6000 局？**  
+A: 微调结束会 **覆盖** 同一张 `dqn_reward_history.png`。权重只在微调评估严格更好时才覆盖；图总会被写成微调曲线。
 
 **Q: 加载 checkpoint 报错 incompatible？**  
-A: 可能是旧版 **3 通道** 权重；需重新 `python dqn_train.py` 训练 **4 通道** 网络。
+A: 可能是旧版 **3 通道** 权重；需重新 `python dqn_train.py` 训练 **4 通道** 网络。`dqn_test.py` / `inspect_fails.py` 没有微调脚本那么友好的提示。
 
 **Q: 表格 Q 在随机图上完全没用吗？**  
 A: 不是完全零分——它仍会在 **碰巧和固定地图相似** 的布局上走几步——但 **没有墙信息**，无法系统性绕新障碍；`dqn_test.py` 的对照会量化这一点。
+
+**Q: 地图上的 `S` 不是起点？**  
+A: `S` 固定画在 `(0,0)`。随机起点时看日志里的 `start=`，`A` 才是 Agent。
 
 ---
 
