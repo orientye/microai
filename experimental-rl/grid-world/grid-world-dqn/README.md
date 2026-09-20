@@ -114,7 +114,7 @@ obstacle[r, c] = 1.0          # 仍是 (5,5) 地图
 return np.concatenate([agent.ravel(), obstacle.ravel(), goal.ravel(), visited.ravel()])
 ```
 
-2. 网络 **第一件事** 是把 `(batch, 100)` 还原成 `(batch, 4, 5, 5)`，否则 `Conv2d` 不知道哪 25 个数是一张图：
+2. 网络 **第一件事** 是把 `(batch, 100)` 还原成 `(batch, 4, 5, 5)`，否则 `Conv2d` 不知道哪 25 个数是一张图。还原成网格后，邻接才重新是「格子的上下左右」，而不是 flatten 后向量里碰巧挨着的下标；**第 3 步** 就是在这张 `(4, 5, 5)` 上扫卷积，再把整图信息压成四个动作的 Q。
 
 ```python
 # dqn_train.py QNet.forward
@@ -122,7 +122,7 @@ if x.dim() == 2:
     x = x.view(-1, self.n_channels, self.grid_size, self.grid_size)
 ```
 
-3. **`QNet` 分两段：卷积提局部特征，全连接头出四个 Q。** 第 2 步 `view` 成 `(batch, 4, 5, 5)` 之后，`forward` 先走 `conv`，再走 `head`：
+3. **`QNet` 分两段：卷积提局部特征，全连接头出四个 Q。** 接上面的 `view`，`forward` 先走 `conv`，再走 `head`：
 
    - **前半 `conv`（空间归纳偏置在这里）**：两层 `Conv2d`，`kernel_size=3` = 每个输出格看自己和 8 邻格；`padding=1` = 特征图仍是 5×5，边上也有核。同一套卷积核权重扫遍全图（权值共享）。若改成扁平 MLP，这两层通常换成 `Linear(100, …)`，就再也没有「3×3 邻域 / 换位置复用」。
    - **后半 `head`（全局决策）**：卷积输出形状是 `(batch, 64, 5, 5)`——仍是「每格一份特征」，还不是四个动作的 Q。所以要 `flatten(1)` 压成长向量，再用 **普通全连接 `nn.Linear`**（相对 Conv 而言没有邻域结构）接到 128 维，最后一层 `Linear(128, 4)` 一次给出 **四个标量**：`Q(↑), Q(→), Q(↓), Q(←)`。选动作时对这 4 个数 `argmax` 即可（对应上文「查 Q → `QNet(obs)[action]`」，但 forward 通常一次算齐四个）。
