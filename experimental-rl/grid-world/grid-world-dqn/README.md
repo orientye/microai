@@ -290,7 +290,7 @@ loss = F.mse_loss(q_values, target)
 |------|----------|------|
 | Replay Buffer | 容量 `50000`，至少 `2000` 条后开始学 | 存 transition，随机重放，打破样本相关性 |
 | Batch | `128` | 每次从 buffer 抽这么多条一起更新（Adam） |
-| Target 软更新 | `τ = 0.005`，每步 `target ← τ·policy + (1-τ)·target` | 稳定目标 |
+| Target 软更新 | `τ = 0.005` | 每次成功的 `train_step`（buffer≥2000 后约每个 env 步一次）软更新 `target ← τ·policy + (1-τ)·target` |
 | 梯度裁剪 | `10.0` | 防爆炸 |
 | Optimizer | Adam, `lr=5e-4` | |
 
