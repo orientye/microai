@@ -122,21 +122,31 @@ if x.dim() == 2:
     x = x.view(-1, self.n_channels, self.grid_size, self.grid_size)
 ```
 
-3. **空间归纳偏置** 就在这两层卷积：`kernel_size=3` = 看自己和 8 邻格；`padding=1` = 输出仍是 5×5，边上也有核。同一套 `Conv2d` 权重扫遍全图（权值共享）。若改成扁平 MLP，这两层换成 `nn.Linear(100, …)`，就再也没有「3×3 邻域 / 换位置复用」：
+3. **`QNet` 分两段：卷积提局部特征，全连接头出四个 Q。** 第 2 步 `view` 成 `(batch, 4, 5, 5)` 之后，`forward` 先走 `conv`，再走 `head`：
+
+   - **前半 `conv`（空间归纳偏置在这里）**：两层 `Conv2d`，`kernel_size=3` = 每个输出格看自己和 8 邻格；`padding=1` = 特征图仍是 5×5，边上也有核。同一套卷积核权重扫遍全图（权值共享）。若改成扁平 MLP，这两层通常换成 `Linear(100, …)`，就再也没有「3×3 邻域 / 换位置复用」。
+   - **后半 `head`（全局决策）**：卷积输出形状是 `(batch, 64, 5, 5)`——仍是「每格一份特征」，还不是四个动作的 Q。所以要 `flatten(1)` 压成长向量，再用 **普通全连接 `nn.Linear`**（相对 Conv 而言没有邻域结构）接到 128 维，最后一层 `Linear(128, 4)` 一次给出 **四个标量**：`Q(↑), Q(→), Q(↓), Q(←)`。选动作时对这 4 个数 `argmax` 即可（对应上文「查 Q → `QNet(obs)[action]`」，但 forward 通常一次算齐四个）。
 
 ```python
+# dqn_train.py QNet
 self.conv = nn.Sequential(
     nn.Conv2d(n_channels, 32, kernel_size=3, padding=1),
     nn.ReLU(),
     nn.Conv2d(32, 64, kernel_size=3, padding=1),
     nn.ReLU(),
 )
-# 卷积之后才 flatten，用普通 Linear 出 4 个 Q
+self.head = nn.Sequential(
+    nn.Linear(64 * grid_size * grid_size, 128),
+    nn.ReLU(),
+    nn.Linear(128, action_dim),  # action_dim=4 → 四个 Q
+)
+
+# forward 里（接第 2 步的 view 之后）
 x = self.conv(x)
 return self.head(x.flatten(1))
 ```
 
-对照：扁平写法会是 `Linear(100, 128)` 直接吃 `_observe()` 的向量，**没有** `view` 回网格，也 **没有** `Conv2d`。本例刻意先卷积、再 `flatten` 进 `head`。
+**和「纯扁平 MLP」对照：** 也可以省掉 `view` 与 `Conv2d`，用 `Linear(100, 128)` 直接吃 `_observe()` 的 100 维向量，最后同样 `Linear(128, 4)` 出四个 Q——**输出含义一样**，差别只在中间有没有卷积那一层。本例刻意 **先 conv、再 flatten 进 head**，把「看邻格绕路」交给卷积，把「在当前整图状态下选哪个方向」交给全连接头。
 
 ---
 
