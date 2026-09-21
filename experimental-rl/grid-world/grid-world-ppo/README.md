@@ -311,7 +311,35 @@ python ppo_test.py
 
 表格 Q 仍 **不含墙通道**，随机布局上成功率通常明显低于 PPO/DQN。
 
-### 6.1 排查失败（`inspect_fails.py`）
+### 6.1 测试时如何走下一步
+
+一局里 `rollout_ppo` 循环到 `terminated`（到 G）或 `truncated`（50 步）为止，每步只做两件事：`select_action(..., greedy=True)` 选方向，再 `env.step` 真正挪一格。**不更新权重、不加塑形、不从 π 采样。**
+
+```text
+state, info = env.reset(...)          # 抽墙 + 随机可达起点，4 通道观测
+while not done:
+    action, _, _ = select_action(
+        net, state, env.legal_actions(avoid_revisit=True), greedy=True
+    )
+    state, reward, terminated, truncated, _ = env.step(action)
+    done = terminated or truncated
+```
+
+`select_action(..., greedy=True)` 是 **掩码后的纯贪心**，argmax 的是 **策略 logits**（不是 Q）：
+
+```text
+1) legal = env.legal_actions(avoid_revisit=True)
+   · 先丢掉撞边 / 撞墙的方向
+   · 若还有从未走过的邻居（visit_count < 1）→ 只留这些
+   · 否则只留访问次数最少的邻居（打破贪心 A↔B 来回）
+2) logits, V = ActorCritic(state)     # Actor 四个方向的分数；V 测试选动作不用
+3) 不在 legal 里的 logits 置成 -1e9
+4) action = argmax(masked logits)
+```
+
+和训练的差别：训练是 `greedy=False`，从 **掩码后的 Categorical** 采样（熵鼓励探索）；测试全程 `net.eval()` + `greedy=True`。和 DQN 测试的差别：DQN 对 **Q 值** argmax，这里对 **π 的 logits** argmax；掩码 / `avoid_revisit` 两边一样。对照的表格 Q 只按格子 id 做 `argmax`，不看墙通道，也不用掩码。
+
+### 6.2 排查失败（`inspect_fails.py`）
 
 默认 `SEED=42`，`N_LAYOUTS=200`，列出失败局的起点、障碍、路径、访问次数 Top5，并重放终局地图。最多打印前 10 条失败；改文件顶部常量可换种子。
 

@@ -465,14 +465,30 @@ for start in env.free_cells(...):      # 3) 每个可行起点跑一局贪心
 # 4) 随机抽 5 个起点打印路径（展示用）
 ```
 
-### 6.1 读表：不再改 Q
+### 6.1 测试时如何走下一步
+
+一局里 `run_greedy_episode`（以及 demo 里手写的同一循环）走到 `terminated`（到 G）或 `truncated`（100 步）为止，每步只做两件事：`argmax` 查表选方向，再 `env.step` 挪一格。**不改 Q、不用 α、不用 ε。**
+
+```text
+state, _ = env.reset(options={"start": start})   # 状态 = 格子 id 0..24
+while not done:
+    action = int(np.argmax(q[state]))            # 该格 4 个 Q 里最大
+    state, reward, terminated, truncated, _ = env.step(action)
+    done = terminated or truncated
+```
+
+这里 **没有** 动作掩码、也 **没有** `avoid_revisit`：地图固定，墙已经「写进」这张表里；撞墙方向的 Q 学完后通常更低，贪心不会选。撞墙时环境规则是位置不变。
+
+和训练的差别：训练是 **ε-greedy**（有时随机乱走）；测试全程 `ε=0`，只查 `q[格子id]`。DQN / PPO 测试还要看整图 + 掩码（见 [`../grid-world-dqn/`](../grid-world-dqn/) §6.1、[`../grid-world-ppo/`](../grid-world-ppo/) §6.1）。
+
+### 6.2 读表：不再改 Q
 
 `Q_PATH = "q_table.npy"`，`np.load` 得到 `shape = (25, 4)` 的数组。  
 这一步没有 `td_error`、没有 `α`、没有 ε-greedy。表是训练阶段已经学好的；测试只是**查表走路**。
 
 若文件不存在，说明还没跑过 `q_learning_train.py`。
 
-### 6.2 打印整图贪心策略
+### 6.3 打印整图贪心策略
 
 `print_policy` 来自 `q_learning_train.py`。对每个格子：
 
@@ -481,17 +497,10 @@ for start in env.free_cells(...):      # 3) 每个可行起点跑一局贪心
 
 这和 `policy_map.png` 是同一套贪心动作，只是测试脚本打在控制台。从任意可行格跟箭头走，应绕过 `#` 到达 `G`。
 
-### 6.3 全起点贪心评估（分数以这里为准）
+### 6.4 全起点贪心评估（分数以这里为准）
 
 `free_cells(include_goal=False)`：5×5 共 25 格，去掉 3 个障碍和终点 `G`，剩下 **21 个可行起点**。  
-对每一个起点调用 `run_greedy_episode`：
-
-```python
-env.reset(options={"start": start})
-while not done:
-    action = int(np.argmax(q[state]))   # 纯贪心，不随机
-    state, reward, terminated, truncated, _ = env.step(action)
-```
+对每一个起点调用 `run_greedy_episode`（选动作见 §6.1）：
 
 每局打印：`start` / `return` / `steps` / `OK` 或 `FAIL`。  
 然后 `evaluate_all_starts` **再用同一套 21 个起点、同一套纯贪心再跑一遍**，只为打汇总（确定性，结果应和上面逐行一致）：
@@ -504,14 +513,14 @@ while not done:
 
 全覆盖、确定、可复现。比「固定从 `S` 再跑五局」有说服力：那五局轨迹往往完全一样。
 
-### 6.4 随机抽几个起点打印路径（展示用）
+### 6.5 随机抽几个起点打印路径（展示用）
 
 `N_RANDOM_DEMOS = 5`，`RANDOM_SEED = 1`，从上面 21 个起点里不放回抽 5 个（`rng.choice(..., replace=False)`）。  
 每个 demo **不调用** `run_greedy_episode`，而是把同样的纯贪心循环手写一遍，以便记下整条 `path`。走完后 `env.render()` 打印**终局地图**（Agent 在终点或超时停留处），并打印该起点的贪心箭头。
 
-分数**不以这 5 条为准**（样本少、只是给人看路）；看 `6.3` 的 `success` / `mean_return`。
+分数**不以这 5 条为准**（样本少、只是给人看路）；看 §6.4 的 `success` / `mean_return`。
 
-### 6.5 和训练评估的关系
+### 6.6 和训练评估的关系
 
 | | 训练中每隔 200 局 | `q_learning_test.py` |
 |--|-------------------|----------------------|
