@@ -513,15 +513,41 @@ python dqn_test.py
 
 地图上的 `S` **永远标左上 `(0,0)`**，不一定是本局起点；本局起点看打印的 `start=`。`A` 才是 Agent。
 
-### 6.1 为什么多种子
+### 6.1 测试时如何走下一步
+
+一局里 `rollout_dqn` 循环到 `terminated`（到 G）或 `truncated`（50 步）为止，每步只做两件事：`select_action` 选方向，再 `env.step` 真正挪一格。**不更新权重、不加塑形、不用 ε。**
+
+```text
+state, info = env.reset(...)          # 抽墙 + 随机可达起点，4 通道观测
+while not done:
+    action = select_action(net, env, state)
+    state, reward, terminated, truncated, _ = env.step(action)
+    done = terminated or truncated
+```
+
+`select_action` 是 **掩码后的纯贪心**：
+
+```text
+1) legal = env.legal_actions(avoid_revisit=True)
+   · 先丢掉撞边 / 撞墙的方向
+   · 若还有从未走过的邻居（visit_count < 1）→ 只留这些
+   · 否则只留访问次数最少的邻居（打破贪心 A↔B 来回）
+2) q = QNet(state)                    # 4 个动作的 Q，no_grad
+3) 不在 legal 里的 Q 置成 -1e9
+4) action = argmax(masked Q)
+```
+
+和训练的差别：训练是 **ε-greedy**（有时在合法动作里随机）；测试全程 `net.eval()` + greedy。对照的表格 Q（§6.3）只按格子 id 做 `argmax`，不看墙通道，也不用掩码 / `avoid_revisit`。
+
+### 6.2 为什么多种子
 
 固定一套考题容易 **过拟合评估集**。随机种子意味着 **布局流也换**，`worst seed` 暴露最差情况；这比「同一张图跑 5 次」更有说服力。
 
-### 6.2 表格 Q 对照
+### 6.3 表格 Q 对照
 
 若已训练过 qlearning，测试脚本会用 **相同种子、相同 200 局/种子** 跑表格贪心（只看格子 id，**不看墙通道**，也 **不用** 合法动作掩码 / `avoid_revisit`）。布局一变，表格 Q 成功率通常会 **明显低于 DQN**——直观说明「状态必须包含墙信息才能泛化」。
 
-### 6.3 排查失败（`inspect_fails.py`）
+### 6.4 排查失败（`inspect_fails.py`）
 
 固定 `SEED=42`，跑 `N_LAYOUTS=200`，把 **未到终点** 的局打印出来：起点、障碍、步数、撞墙次数、路径头尾、渲染地图。改文件顶部的 `SEED` / `N_LAYOUTS` 可复现其它失败集。
 
