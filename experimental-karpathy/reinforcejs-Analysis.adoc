@@ -1,0 +1,547 @@
+= REINFORCEjs 源码分析
+:toc:
+:toc-title: 目录
+:toclevels: 3
+:sectanchors:
+:source-highlighter: rouge
+
+
+对照说明：link:reinforcejs/README.md[`reinforcejs/README.md`]，实现在 link:reinforcejs/lib/rl.js[`lib/rl.js`]。 +
+官方仓库：link:https://github.com/karpathy/reinforcejs[karpathy/reinforcejs]（本克隆 `08d2030`，2015-12-06）。 +
+演示与接口说明写在四个 HTML 里，完整讲义在 link:http://cs.stanford.edu/people/karpathy/reinforcejs[Stanford 主页]。 +
+本文件按*这份克隆的真实源码*拆，不按主页上的理想公式。
+
+它不接在 micrograd → microgpt → nanoGPT 那条读序后面。那三份拆的是标量自动微分怎么长成 GPT。这份库拆的是强化学习智能体：`act` 选动作，`learn` 改 `V` / `Q` / 网络。
+
+阅读建议：
+
+- §1～§3 先对位置：六个类里只有三个挂到 `RL` 上。
+- *§4～§7* 是能跑的部分：环境契约、`DPAgent`、`TDAgent`、`DQNAgent`。对照本仓库 link:../experimental-rl/grid-world/README.md[`experimental-rl/grid-world`] 和 link:../experimental-rl/cliff-walking/README.md[`cliff-walking`]。
+- §8 是源码里注释掉导出的策略梯度。对照 link:../experimental-rl/grid-world/grid-world-ppo/README.md[`grid-world-ppo`] 时，先看它缺了什么，再看公式。
+
+'''
+
+== 1. 概要
+
+`lib/rl.js` 约 1530 行，两个 IIFE。前半段是 `R`：从 link:https://github.com/karpathy/recurrentjs[recurrentjs] 拆出来的矩阵和表达式图，`Graph.backward` 沿闭包把梯度推回 `Mat.dw`。后半段是 `RL`，六个智能体：
+
+[cols="1,2,2",options="header"]
+|===
+| 类
+| 在学什么
+| 是否导出
+
+| `DPAgent`
+| 有模型时，对 `V` 做一次同步备份，再把 `π` 改成对 `V` 贪心
+| `RL.DPAgent`
+| `TDAgent`
+| 无模型。表格 `Q`，`qlearn` 或 `sarsa`，可选资格迹和规划
+| `RL.TDAgent`
+| `DQNAgent`
+| 同一张两层 MLP 近似 `Q(s,a)`，用回放里的转移做 SGD
+| `RL.DQNAgent`
+| `SimpleReinforceAgent`
+| 高斯策略 + 另一张网当 baseline，固定窗口的蒙特卡洛回报
+| 导出被注释
+| `RecurrentReinforceAgent`
+| 同上，actor / baseline 换成 LSTM
+| 导出被注释
+| `DeterministPG`
+| 评论写的是确定性策略梯度；actor 的矩阵尺寸对不上
+| 导出被注释
+|===
+
+文件末尾只把前三个赋给 `RL`：
+
+[source,javascript]
+----
+global.DPAgent = DPAgent;
+global.TDAgent = TDAgent;
+global.DQNAgent = DQNAgent;
+//global.SimpleReinforceAgent = SimpleReinforceAgent;
+//global.RecurrentReinforceAgent = RecurrentReinforceAgent;
+//global.DeterministPG = DeterministPG;
+----
+
+表格法和 DP 的状态是整数 `0 .. ns-1`。DQN 和三个策略梯度类把 `getNumStates()` 当成*特征向量长度*，`act` 吃的是数组，内部包成 `R.Mat`。同一套方法名，两种含义。演示页自己也这么写。
+
+'''
+
+== 2. 和 experimental-rl 对照
+
+
+[cols="1,1,1",options="header"]
+|===
+| {nbsp}
+| *REINFORCEjs*
+| *experimental-rl*
+
+| 表格 Q-learning
+| `TDAgent`，`update:'qlearn'`。10×10 格子，`γ=0.9`。到目标后传送回起点，*下一步仍用 `Q(s')` 自举*
+| link:../experimental-rl/grid-world/grid-world-qlearning/q_learning_train.py[`grid-world-qlearning`]：5×5，`γ=0.99`。`done` 时目标就是 `r`，不再加 `γ max Q`
+| SARSA
+| 同一个 `TDAgent`，`update:'sarsa'`，目标用真实的下一步动作 `a1`
+| link:../experimental-rl/cliff-walking/cliff-walking-q-sarsa/td_updates.py[`cliff-walking-q-sarsa`]：`sarsa_update` 用 `Q[s', a']`，`q_learning_update` 用 `max Q`
+| 深度 Q
+| 一层 tanh 的 MLP。`max_a Q(s',a)` 和当前 `Q(s,a)` *同一张* `this.net`。一次一条，SGD
+| link:../experimental-rl/grid-world/grid-world-dqn/dqn_train.py[`grid-world-dqn`]：CNN，Double DQN（online 网选动作，target 网取值），Adam，小批量
+| 策略梯度
+| 三个类未导出。动作是向量加高斯噪声，100 步窗口里取折扣和当回报
+| link:../experimental-rl/grid-world/grid-world-ppo/ppo_train.py[`grid-world-ppo`]：离散 `Categorical`、合法动作掩码、GAE、优势标准化、ratio clip
+| 环境模型
+| `DPAgent` 直接问 `nextStateDistribution` / `reward`。`TDAgent` 在 `planN>0` 时自己记 `(s,a)→(s',r)`
+| 这几个例子都只通过 `step` 采样，不把 `P` 交给智能体
+|===
+
+算法核可以并排看。表示、终止、目标网络、策略梯度那一段不要并排当成同一份实现。
+
+'''
+
+== 3. 目录与读序
+
+
+[listing]
+----
+experimental-karpathy/
+  reinforcejs-Analysis.adoc          # 本文件
+  micrograd-Analysis.adoc            # 另一条线：标量 AD
+  reinforcejs/                       # 上游克隆（见 .gitignore）
+    lib/rl.js                        # R（约 1–591 行）+ RL（约 594 行起）
+    gridworld_dp.html                # 10×10，按钮调 evaluatePolicy / updatePolicy
+    gridworld_td.html                # 同一张图，TDAgent 的 act / learn 循环
+    puckworld.html                   # 8 维特征，DQNAgent
+    waterworld.html / waterworld.js  # 30 个眼睛 × 5 + 2 维，多个 DQNAgent
+    index.html                       # README 那份用法草稿
+----
+
+
+`R` 和 micrograd 的 `Value` 是同一类东西：前向把反向闭包推进一个列表，`backward` 倒着调。差别是数据是 `Mat`（`w` 与 `dw` 平行数组），闭包挂在 `Graph` 上，不挂在每个标量节点上。DQN 只用到 `mul` / `add` / `tanh`、`Graph.backward`、`updateNet`。读 §7 时翻这几个函数即可，不必把 LSTM 那一段读完。
+
+建议读序：
+
+1. `gridworld_dp.html` 里的 `Gridworld` — §4 的状态、墙、奖励
+2. `DPAgent.evaluatePolicy` / `updatePolicy` — §5。页面按钮走这两条，不走 `learn`
+3. `TDAgent.act` / `learn` / `learnFromTuple` — §6。`gridworld_td.html` 顶部的 `spec` 是默认超参
+4. `DQNAgent.forwardQ` / `learnFromTuple`，对照 `R.updateMat` — §7
+5. 三个未导出的类 — §8。注释已经写了 `doesnt work`
+
+浏览器打开 HTML 即可看箭头和值函数颜色。库本身没有测试脚本。
+
+'''
+
+== 4. 环境接口
+
+DP 和表格 TD 要求环境提供：
+
+[cols="1,2",options="header"]
+|===
+| 方法
+| 这份代码实际怎么用
+
+| `getNumStates()`
+| 状态个数。`V` 长度是它，`Q` / `P` 长度是 `ns * na`
+| `getMaxNumActions()`
+| 动作上界。下标是 `a * ns + s`，所以 `a` 必须落在 `0 .. na-1`
+| `allowedActions(s)`
+| 该状态合法动作的整数列表。`act` 和备份都只在这个列表里循环
+| `nextStateDistribution(s,a)`
+| *名字是分布，返回值是一个整数后继。* 页面原文：确定性 MDP，概率质量全在这一个 `s'` 上
+| `reward(s,a,ns)`
+| `DPAgent` 用来算 `r`。GridWorld 实现返回 `Rarr[s]`，`a` 和 `ns` 不参与
+|===
+
+DQN 把前两个方法改成特征维和动作个数。`act(slist)` 的 `slist.length` 必须等于 `getNumStates()`。它*不*调用 `allowedActions`：探索是 `randi(0, na)`，贪心是 `Q` 向量的 `argmax`。PuckWorld、WaterWorld 的动作全集都合法，这个接口够用。拿到 GridWorld 那种「贴边少一个动作」的环境上，DQN 会选出墙外的动作编号。
+
+=== 4.1 平坦下标
+
+`P`、`Q`、资格迹、环境模型都是一维数组。状态 `s`、动作 `a` 的槽位是：
+
+[source,javascript]
+----
+var ix = a * this.ns + s;
+----
+
+动作是外层，状态是内层。`experimental-rl` 的表是 `q[state, action]`，下标顺序相反，数值公式一样。
+
+=== 4.2 GridWorld：10×10，奖励挂在当前格
+
+`gridworld_dp.html` 和 `gridworld_td.html` 里的 `Gridworld` 是同一份。`gh = gw = 10`，`gs = 100`。编码 `s = x * gh + y`，`x = floor(s / 10)`，`y = s % 10`。四个动作：
+
+[cols="1,2",options="header"]
+|===
+| `a`
+| 位移
+
+| 0
+| `x - 1`
+| 1
+| `y - 1`
+| 2
+| `y + 1`
+| 3
+| `x + 1`
+|===
+
+`allowedActions` 把会走出边界的动作拿掉。`T[s] === 1` 的格子是墙：*从外面走进去*时 `ns` 改回 `s`（停在原地）。已经站在墙格子上时，`nextStateDistribution` 里给 `ns` 赋值的那一行是注释掉的，函数会返回未赋值的 `ns`。正常转移进不了墙，这条只在起点被放进 `T[s]===1` 时才会碰到。
+
+奖励写在 `Rarr` 上，读的是*离开前的那一格*：
+
+- 格子 55：`+1`。再走一步会传到起点（起点若是墙就改随机空格）。`sampleNextState` 在 `s === 55 && ns === 0` 时带上 `reset_episode`
+- 若干格子：`-1`（54、64、65、85、86、37、33、67、57）
+- 墙：`0`
+
+`reward(s,a,ns)` 原样返回 `Rarr[s]`。`sampleNextState` 在此之外再减 `0.01`。所以：
+
+- `DPAgent` 走 `reward()`，*没有*每步 `-0.01`
+- `TDAgent` 的演示走 `sampleNextState`，每步先扣 `0.01`，再把这个数交给 `learn`
+
+目标格不是 `done` 后价值归零。传送之后下一次 `learn` 仍会用新状态的 `Q` 做自举。对照 `q_learning_train.py`：那里 `terminated` 时目标就是这一步的 `r`。
+
+'''
+
+== 5. DPAgent
+
+类注释写 “Value Iteration”。`learn` 的注释也这么写。算出来的是*修改的策略迭代、评估只扫一遍*：
+
+1. `evaluatePolicy`：按*当前* `π` 对每个 `s` 做一次同步贝尔曼备份，写入新的 `V`
+2. `updatePolicy`：对每个 `s` 选 `r + γ V(s')` 最大的动作，平分概率
+
+经典值迭代把 `max_a` 放进同一次备份。这里 `max` 在第二步，第一步对 `π` 取期望。`reset` 时 `π` 在合法动作上均匀，所以*第一轮*评估的是均匀策略，不是贪心策略。等 `π` 变成某个贪心解之后，若没有并列最大，下一步 `evaluatePolicy` 才和值迭代的备份重合。并列时概率被拆成 `1/nmax`，备份是这几个动作的平均，不是任取一个 `max`。
+
+`gridworld_dp.html` 的按钮直接调 `agent.evaluatePolicy()` 和 `agent.updatePolicy()`，定时器轮流按这两个按钮。页面底部草稿写的是 `agent.learn()`。`learn` 本体是：
+
+[source,javascript]
+----
+learn: function() {
+  self.evaluatePolicy();
+  self.updatePolicy();
+}
+----
+
+这里的 `self` 不是 `this`。浏览器里 `self` 是 `window`。演示能跑，是因为按钮没有走 `learn`。
+
+=== 5.1 一次策略评估
+
+对每个状态，只在 `allowedActions(s)` 上累加。`prob === 0` 的动作跳过。后继是一个整数，所以公式里对 `s'` 的那个和式在代码里不出现：
+
+[source,javascript]
+----
+v += prob * (rs + this.gamma * this.V[ns]);
+----
+
+`rs = env.reward(s, a, ns)`。新值先放进 `Vnew`，扫完再 `this.V = Vnew`。同步更新：这一轮右边用的全是旧 `V`。
+
+默认 `gamma` 是 `0.75`。GridWorld 演示构造时传入 `{'gamma':0.9}`。
+
+=== 5.2 贪心更新与 act
+
+每个状态算
+
+[source,javascript]
+----
+v = rs + this.gamma * this.V[ns]
+----
+
+`v` 最大的动作（可以多个）各得 `1/nmax`，其余为 0。`act(s)` 在合法动作上按 `P` 做 `sampleWeighted`。确定性贪心时这就是唯一的那个动作；有并列时随机打平。
+
+`experimental-rl` 的表格例子不存 `π`。动作时现场看 `Q` 做 ε-greedy。这里 `π` 是显式数组，DP 完全不探索：没有 `epsilon`。
+
+'''
+
+== 6. TDAgent
+
+不向环境要 `nextStateDistribution`。交互是：
+
+[source,javascript]
+----
+var a = agent.act(state);
+var obs = env.sampleNextState(state, a);
+agent.learn(obs.r);
+state = obs.ns;
+----
+
+`learn(r1)` 用的奖励是*上一次* `learn` 存下的 `r0`，配对的转移是 `(s0, a0, r0, s1, a1)`。`act` 先把记忆平移，再写入当前的 `s1, a1`。因此第一次 `learn` 时 `r0 == null`，直接跳过。从第二步起，每步更新的是*前一个* `(s,a)`。
+
+`gridworld_td.html` 的默认 `spec`：
+
+[cols="1,1,2",options="header"]
+|===
+| 字段
+| 演示值
+| 构造函数默认
+
+| `update`
+| `'qlearn'`
+| `'qlearn'`（另一个合法值 `'sarsa'`）
+| `gamma`
+| 0.9
+| 0.75
+| `epsilon`
+| 0.2
+| 0.1
+| `alpha`
+| 0.1
+| 0.01
+| `lambda`
+| 0
+| 0（0 表示不用资格迹）
+| `replacing_traces`
+| true
+| true
+| `planN`
+| 50
+| 0
+| `smooth_policy_update`
+| true
+| false
+| `beta`
+| 0.1
+| 0.01
+|===
+
+=== 6.1 目标：max Q 还是 Q(s', a')
+
+`learnFromTuple` 里两种目标：
+
+[source,javascript]
+----
+// qlearn
+target = r0 + this.gamma * qmax;          // qmax = max over allowedActions(s1)
+// sarsa
+target = r0 + this.gamma * this.Q[a1 * ns + s1];
+----
+
+和 `td_updates.py` 同一对公式。差别在终止：这里没有 `done`。目标格的 `+1` 写进 `r0` 之后，下一次 `act` 已经站在传送后的起点上，自举用的是起点的 `Q`，不是 0。`resetEpisode` 是空函数，不清 `s0/a0/r0`。
+
+`qmax` 的循环用 `i === 0 || qval > qmax`，所以全负的 `Q` 也会取到真正的最大项，不会停在初值 0。`q_init_val` 非 0 时整张 `Q` 填成这个常数（乐观初始化）。默认是 0。
+
+无资格迹时的更新就是表格 TD：
+
+[source,javascript]
+----
+var update = this.alpha * (target - this.Q[sa]);
+this.Q[sa] += update;
+this.updatePolicy(s0);
+----
+
+`grid-world-qlearning` 在 `done` 分支之外写的是同一行。
+
+=== 6.2 ε-greedy 读的是 π，不是 Q
+
+`act` 以 `epsilon` 的概率在 `allowedActions` 里均匀抽，否则按 `P[a*ns+s]` 抽样。`P` 由 `updatePolicy` 维护：对 `Q` 最大的动作放 `1/nmax`。
+
+`smooth_policy_update` 为真时不直接覆盖，而是
+
+[source,javascript]
+----
+P += beta * (target - P)
+----
+
+再在合法动作上重新归一化。演示打开了它，箭头会慢慢转向，而不是一帧跳到贪心。类注释写明这是为了可视化，不是标准算法。`experimental-rl` 的策略图是评估时对 `Q` 取 `argmax`，训练时的 ε 不写进一张单独的 `π`。
+
+=== 6.3 资格迹
+
+`lambda > 0` 时，当前 `(s,a)` 的迹：`replacing_traces` 为真则置 1，否则 `+= 1`。然后*每个*合法 `(s,a)` 都做
+
+[source,javascript]
+----
+Q[sa] += alpha * e[sa] * (target - Q[sa]);
+e[sa] *= lambda * gamma;
+----
+
+替换迹是「再访就回到 1」，累积迹是「再访就加 1」。衰减用 `λγ`，和 Sutton 书里的累积方式一致。
+
+Q-learning 是离策略的：行为动作可能是探索。代码在 `this.explored && update === 'qlearn'` 时把整条迹清零。SARSA 不清。这是 Watkins 的 Q(λ) 在探索步截断迹；SARSA(λ) 保留。`lambda === 0` 时这段不跑，探索只影响当前这一格，和 `cliff-walking` 的单步更新一样。
+
+=== 6.4 规划：优先扫，不是均匀 Dyna
+
+`planN > 0` 时，每次真实更新之后：
+
+1. `updateModel` 记下 `env_model_s[a*ns+s] = s1`、`env_model_r[...] = r0`。没见过的 `(s,a)` 放进 `sa_seen`。模型是覆盖写，后一次观察替换前一次，适合演示里这个确定性格子。
+2. `plan` 按 `pq` 从大到小取出最多 `planN` 个曾经见过的 `(s,a)`，用模型里的 `(r,s')` 再调 `learnFromTuple`。这次传入的 `lambda` 是 0，规划步不拉资格迹。
+
+优先级在 `updatePriority`：某次 `Q(s,a)` 的改变量绝对值加到*所有模型认为会转移到 `s` 的前驱*上。随机抽样那一行是注释掉的。所以这是优先扫（priority sweeping），不是 Dyna 的均匀假经验。
+
+规划里若 `update === 'sarsa'`，`a1` 用 `allowedActions(s1)` 里的*均匀随机*动作，不是 `π` 也不是 ε-greedy。注释写着 `generate random action?...`。真实环境步上的 SARSA 用的才是 `act` 刚选的 `a1`。
+
+'''
+
+== 7. DQNAgent
+
+PuckWorld 的状态是长度 8 的数组（位置、速度、两个目标的相对坐标），5 个动作：左右上下和不动。WaterWorld 每个个体一条 `DQNAgent`，`getNumStates()` 是 `30 * 5 + 2`。两边的学习步都是 `act(特征)` 然后 `learn(r)`。
+
+网络写死在一个字典里，没有 `Net` 类。作者在 `reset` 上方留了这句。
+
+[source,javascript]
+----
+this.net.W1 = new R.RandMat(this.nh, this.ns, 0, 0.01); // nh × ns
+this.net.b1 = new R.Mat(this.nh, 1, 0, 0.01);
+this.net.W2 = new R.RandMat(this.na, this.nh, 0, 0.01); // na × nh
+this.net.b2 = new R.Mat(this.na, 1, 0, 0.01);
+----
+
+`forwardQ`：
+
+[source,javascript]
+----
+h = tanh(W1 s + b1)
+Q = W2 h + b2          // 长度 na，线性输出
+----
+
+`num_hidden_units` 默认 100。PuckWorld 演示把 `alpha` 设成 `0.01`，`experience_add_every = 10`，`experience_size = 5000`，`learning_steps_per_iteration = 20`，`tderror_clamp = 1`。构造函数默认是每 25 步存一条、回放 5000、每步再学 10 次。`epsilon` 不会自己衰减，页面用滑块改。
+
+=== 7.1 同一张网的 TD 误差
+
+`learnFromTuple` 的顺序：
+
+1. `forwardQ(net, s1, false)`。`needs_backprop === false` 时 `Graph` 不记录闭包。`qmax = r0 + gamma * max_i tmat.w[i]`，`max` 走全部 `na` 维，不看合法动作。
+2. `forwardQ(net, s0, true)` 得到 `pred`，这次的 `Graph` 留在 `this.lastG`。后一次调用覆盖 `lastG`，所以反传的是 `s0` 这条，不是 `s1`。
+3. `tderror = pred.w[a0] - qmax`。大于 `tderror_clamp` 就截断。只给*选中的动作*写 `pred.dw[a0] = tderror`，其余动作的 `dw` 保持 0。
+4. `lastG.backward()`，然后 `R.updateNet(this.net, this.alpha)`。
+
+`updateMat` 是
+
+[source,javascript]
+----
+m.w[i] += -alpha * m.dw[i];
+m.dw[i] = 0;
+----
+
+`dw === 0` 的权重跳过。输出梯度取 `Q - target`，再取负号步长，就是在减小 `(Q(s,a) - target)^2` 的梯度。截断后的残差等于 Huber 损失对 `Q` 的导数（二次区里损失写成 `0.5 x^2` 时，导数就是 `x`）。没有第二张目标网络：`max Q(s')` 和正在被回归的 `Q(s,a)` 共用 `this.net` 的当前权重。`grid-world-dqn` 用 online 网 `argmax`、target 网取值，并且 `loss` 是一批上的 `mse`。
+
+`s1` 那次前向在 `s0` 之前，用的也是更新前的权重。一条样本内部没有「先改权重再算 target」的顺序问题。目标仍然跟着同一张网每步移动。
+
+=== 7.2 回放
+
+`r0 == null` 的第一步不学。从第二条转移起，*每次*都先对刚观测的元组调用 `learnFromTuple`。另外当 `t % experience_add_every === 0` 时把 `[s0, a0, r0, s1, a1]` 写入 `exp`。`t` 从 0 开始，所以第一次真正的更新一定会入库。随后再均匀抽 `learning_steps_per_iteration` 条重放。
+
+写入下标 `expi` 超过 `experience_size` 才折回 0，因此数组可以长到 `experience_size + 1`。抽样用 `randi(0, exp.length)`，没有优先级（旁边留了 `todo: priority sweeps?`）。没有 minibatch：每一条单独前向、单独 `updateNet`。
+
+`toJSON` / `fromJSON` 只序列化 `nh, ns, na` 和 `net` 的权重。`agentzoo/*.json` 是这种快照。资格迹、回放、`epsilon` 不在里面。
+
+=== 7.3 R 在这条路径上做的事
+
+`Mat` 的 `w` 存值，`dw` 存梯度。`Graph` 的 `mul` / `add` / `tanh` 在 `needs_backprop` 时把一个闭包推进 `this.backprop`。`backward` 从末尾倒序调用。`tanh` 的局部导数是 `1 - y^2`，乘上游的 `out.dw` 后 `+=` 进输入的 `dw`。
+
+这和 micrograd 的 `_backward` 闭包是同一模式，作用对象换成矩阵乘法。DQN 不建 LSTM。`updateNet` 是固定步长 SGD，没有动量，也没有 Adam。
+
+'''
+
+== 8. 策略梯度（未导出）
+
+三个类的导出都注释掉了。`SimpleReinforceAgent` 和 `DeterministPG` 的类注释是 `doesnt work`。`RecurrentReinforceAgent` 的注释是 `buggy implementation as well, doesn't work`。`waterworld.html` / `puckworld.html` 里改用它们的那几行也是注释。
+
+和 `grid-world-ppo` 并排放，差在这些地方：
+
+[cols="1,1,1",options="header"]
+|===
+| {nbsp}
+| *这里的三个类*
+| *grid-world-ppo*
+
+| 动作
+| `act` 返回 `R.Mat`。噪声加在向量分量上，不是 `Categorical`
+| 离散动作，logits 上对非法动作填掩码
+| 回报
+| 凑满 100 步后，对前 80 步各算一次从该步到窗口末尾的折扣和，然后把窗口丢掉
+| GAE(λ)，优势在整段上减均值除标准差
+| 策略损失
+| 手写 `dw`，没有 ratio，没有 clip
+| `min(ratio * A, clip(ratio) * A)`
+| 价值
+| 第二张网（或 LSTM）的 `w[0]` 当 baseline
+| 同一个网上的 `V` 头，拟合回报
+| 其它
+| 无熵奖励，无梯度范数裁剪
+| 熵奖励，`clip_grad_norm_`
+|===
+
+下面只记源码里和「能学」直接相关的几处，不把它们修回论文公式。
+
+=== 8.1 SimpleReinforceAgent
+
+Actor 和 baseline 都是 `tanh` 一层的 MLP。`act` 先把网络输出拷出来，再*替换*前两维：
+
+[source,javascript]
+----
+a.w[0] = R.randn(0, 0.02);
+a.w[1] = R.randn(0, 0.02);
+----
+
+高斯的中心是 0，不是网络的均值。`na > 2` 时其余维保持网络输出，不采样。`epsilon` 存了，`act` 不用。
+
+凑满 `nup = 100` 后，对 `t < nuse`（80）写
+
+[source,javascript]
+----
+actorOutputs[t].dw[i] += -(V - b) * (actorActions[t].w[i] - actorOutputs[t].w[i]);
+baselineOutputs[t].dw[0] += -(V - b);
+----
+
+`V` 是窗口内的折扣回报，`b` 是 baseline 的 `w[0]`。Actor 这项是高斯对数概率对均值的导数再乘优势，前提是采样中心等于网络输出。上一行已经把采样中心换成 0，这项乘的就不是当前策略的 score。Baseline 的输出维是 `na`（`W2` 的行数），更新只写 `dw[0]`。
+
+Actor 的 `dw` 被夹到 `[-0.1, 0.1]`。Baseline 写成：
+
+[source,javascript]
+----
+if(update > 0.1) { update = 0.1; }
+if(update < 0.1) { update = -0.1; }
+----
+
+第二行把所有 `< 0.1` 的数，包括小的正数，都改成 `-0.1`。`RecurrentReinforceAgent` 的 baseline 是同一行；它的 actor 第二行写的是 `update < -0.1`。
+
+窗口末尾 20 步出现在前面那些 `V` 的和式里，自己的 `dw` 不写。然后 `rewardHistory` 和两条图全部清空，这 20 步不再被用到。
+
+=== 8.2 RecurrentReinforceAgent
+
+Actor / baseline 换成 `R.initLSTM`，整段共用一个 `Graph`，`backward` 一次，这是截断 BPTT 的形状。采样是：
+
+[source,javascript]
+----
+for(var i=0,n=a.w.length;i<n;i++) {
+  a.w[0] += R.randn(0, 0.05);
+  a.w[1] += R.randn(0, 0.05);
+}
+----
+
+循环次数等于动作维数，噪声却每次都加在第 0、1 维上。网络输出被加上 `na` 次噪声，不是每维一次。回报和 baseline 截断与 §8.1 相同。
+
+=== 8.3 DeterministPG
+
+`forwardActor` 里 `h1` 是 `nh × 1`（`nh` 固定 100），`W2` 却建成 `na × ns`：
+
+[source,javascript]
+----
+this.actorNet.W2 = new R.RandMat(this.na, this.ns, 0, 0.1);
+var a2mat = G.add(G.mul(net.W2, h1mat), net.b2);
+----
+
+`ns !== 100` 时这次 `mul` 的形状对不上。`ntheta` 只数了 `na*ns + na`，也就是按 `W2` 和 `b2` 估计的参数量；后面的循环却用 `criticw.w[ix]` 去扫*整个* `actorNet`（含 `W1`、`b1`）。`utilJacobianAt(s)` 忽略参数 `s`，反传用的是 `this.s0`。
+
+`learn` 里把 actor 对每个输出维的梯度摊成矩阵，再和动作向量相乘得到 `psi`，评论是 `criticw` 乘 `psi`。Actor 的更新是 `w += alpha * criticw` 的对应分量，不乘 TD 误差。源码注释称这是 natural gradient。它不是 `grid-world-ppo` 那种带 clip 的策略梯度，也和「`∇_a Q · ∇_θ μ`」那条确定性策略梯度不是同一行代码。
+
+'''
+
+== 9. 边界与延伸
+
+这份克隆给出的是 2015 年浏览器里的教学演示，不是后来 Atari DQN / PPO 的缩小版。GridWorld 的 DP、表格 TD 可以和 Sutton 书第 4、6、7 章的更新对上；DQN 能对上的是「用网络表示 `Q`、用回放打散相关、用截断的 TD 残差做 SGD」。对不上的是目标网络、终止自举、批量、以及任何已经导出的策略梯度。
+
+
+[cols="1,1",options="header"]
+|===
+| 适合借鉴
+| 不必沿用
+
+| `act` / `learn` 把「采样」和「更新」拆开，转移元组延迟一步再学
+| `DPAgent.learn` 里的裸 `self`
+| 平坦表 `a * ns + s`，以及 Q 与 SARSA 只差目标那一项
+| 把 `getNumStates` 同时用于「状态个数」和「特征维」
+| 资格迹在离策略探索步清零；规划用学到的 `(s,a)→(s',r)` 做优先扫
+| 规划阶段的 SARSA 用均匀随机的 `a1`
+| DQN 只给被执行的动作写输出梯度，`updateNet` 跳过 `dw === 0`
+| 用同一张网算 `max Q(s')`，并且不区分 `done`
+| 三个策略梯度类留在文件里、导出注释掉，避免被当成可用 API
+| 高斯采样、baseline 截断、`DeterministPG` 的矩阵形状
+|===
+
+本仓库里已经有可运行的对照实现：表格 Q 在 `grid-world-qlearning`，Q 与 SARSA 的分叉在 `cliff-walking-q-sarsa`，带目标网络的 DQN 在 `grid-world-dqn`，带 clip 的策略梯度在 `grid-world-ppo`。读 REINFORCEjs 是为了看见这些更新第一次被写进一个文件时的样子。
