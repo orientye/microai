@@ -120,8 +120,8 @@ experimental-karpathy/
 建议读序：
 
 1. `gridworld_dp.html` 里的 `Gridworld` — §4 的状态、墙、奖励
-2. `DPAgent.evaluatePolicy` / `updatePolicy` — §5。页面按钮走这两条，不走 `learn`
-3. `TDAgent.act` / `learn` / `learnFromTuple` — §6。`gridworld_td.html` 顶部的 `spec` 是默认超参
+2. `DPAgent.evaluatePolicy` / `updatePolicy` — §5；四个按钮与画板含义见 §5.3
+3. `TDAgent.act` / `learn` / `learnFromTuple` — §6。`gridworld_td.html` 里 `#agentspec` 文本框的默认 `spec`
 4. `DQNAgent.forwardQ` / `learnFromTuple`，对照 `R.updateMat` — §7
 5. 三个未导出的类 — §8。注释已经写了 `doesnt work`
 
@@ -208,7 +208,7 @@ var ix = a * this.ns + s;
 
 经典值迭代把 `max_a` 放进同一次备份。这里 `max` 在第二步，第一步对 `π` 取期望。`reset` 时 `π` 在合法动作上均匀，所以*第一轮*评估的是均匀策略，不是贪心策略。等 `π` 变成某个贪心解之后，若没有并列最大，下一步 `evaluatePolicy` 才和值迭代的备份重合。并列时概率被拆成 `1/nmax`，备份是这几个动作的平均，不是任取一个 `max`。
 
-`gridworld_dp.html` 的按钮直接调 `agent.evaluatePolicy()` 和 `agent.updatePolicy()`，定时器轮流按这两个按钮。页面底部草稿写的是 `agent.learn()`。`learn` 本体是：
+`gridworld_dp.html` 的按钮直接调 `agent.evaluatePolicy()` 和 `agent.updatePolicy()`，定时器轮流按这两个按钮；*不*调 `agent.act` / `learn`，也没有 agent 在格子里走的仿真（对照 link:reinforcejs/gridworld_td.html[`gridworld_td.html`]）。页面底部文档草稿写的是 `agent.learn()`，以及 `agent.act()` 未传状态 `s`；演示能跑是因为 UI 自己维护 `state`，不是那段示例。`learn` 本体是：
 
 [source,javascript]
 ----
@@ -245,6 +245,57 @@ v = rs + this.gamma * this.V[ns]
 `v` 最大的动作（可以多个）各得 `1/nmax`，其余为 0。`act(s)` 在合法动作上按 `P` 做 `sampleWeighted`。确定性贪心时这就是唯一的那个动作；有并列时随机打平。
 
 `experimental-rl` 的表格例子不存 `π`。动作时现场看 `Q` 做 ε-greedy。这里 `π` 是显式数组，DP 完全不探索：没有 `epsilon`。
+
+=== 5.3 `gridworld_dp.html` 界面
+
+link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化：`start()` 里 `env = new Gridworld()`，`agent = new RL.DPAgent(env, {'gamma':0.9})`。`drawGrid()` 用 `agent.V[s]` 给格子染色（正偏红、负偏蓝，幅度约 `|V|×100`），用 `agent.P[a*gs+s]` 画四向箭头；非零 `Rarr[s]` 显示 `R ±1.0` 等。墙格（`T[s]===1`）灰色，不画 `V` 和箭头。
+
+[cols="1,2",options="header"]
+|===
+| 按钮
+| 代码与含义
+
+| *Policy Evaluation (one sweep)*
+| `evaluatePolicy()` → `agent.evaluatePolicy()` → `drawGrid()`。在*当前* `π` 下对所有 `s` 做一轮同步贝尔曼备份（§5.1）。奖励走 `env.reward`，*没有* TD 页 `sampleNextState` 里每步 `-0.01`
+| *Policy Update*
+| `updatePolicy()` → `agent.updatePolicy()` → `drawGrid()`。固定当前 `V`，每个 `s` 贪心改 `π`（§5.2）。箭头长度 ∝ 概率；`prob===0` 隐藏。并列最优时多条箭头等长
+| *Toggle Value Iteration*
+| `runValueIteration()`：第一次点开 `setInterval`，每 100ms 先 `evaluatePolicy` 再 `updatePolicy` 并重画；再点一次 `clearInterval` 停止。即「每轮只扫一遍 `V` 就改 `π`」的 modified value iteration，*不等* 策略评估收敛
+| *Reset*
+| `resetAll()`：`env.reset()` 恢复默认地图与 `Rarr`，`agent.reset()` 令 `V=0`、`π` 在合法动作上均匀，再 `drawGrid()`。若定时器在跑，源码*不会*自动停 Toggle，应先关再 Reset
+|===
+
+箭头方向与 `nextStateDistribution` 的动作编号一致（与 §4.2 位移表相同）：
+
+[cols="1,1,1",options="header"]
+|===
+| `a`
+| 转移
+| 屏幕箭头
+
+| 0
+| `x - 1`
+| 左
+| 1
+| `y - 1`
+| 上
+| 2
+| `y + 1`
+| 下
+| 3
+| `x + 1`
+| 右
+|===
+
+*格子点击 + Cell reward 滑条*：`cellClicked(s)` 选中格（再点取消），选中格填 `#FF0`。滑条范围约 `-5 .. 5.1`、步长 `0.1`，只改 `env.Rarr[selected]`。*不会*自动重算 `V` 或 `π`；改完需再点 Evaluation / Update 或开 Toggle。页面说明里「改奖励看策略怎么变」指的就是手动迭代。
+
+建议操作顺序（对照 Sutton 第 4 章策略迭代 / 值迭代）：
+
+1. Reset → 均匀 `π`、`V=0`
+2. 多次 Policy Evaluation → 只看 `V` 从奖励格向外扩散
+3. Policy Update → 箭头指向 lookahead 更大的动作
+4. 交替点 Evaluation / Update，或 Toggle 直到箭头稳定
+5. 选中某格改滑条奖励，再 Toggle → 观察 `π` 如何跟着变
 
 '''
 
