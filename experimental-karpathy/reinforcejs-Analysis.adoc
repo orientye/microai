@@ -208,7 +208,7 @@ var ix = a * this.ns + s;
 
 经典值迭代把 `max_a` 放进同一次备份。这里 `max` 在第二步，第一步对 `π` 取期望。`reset` 时 `π` 在合法动作上均匀，所以*第一轮*评估的是均匀策略，不是贪心策略。等 `π` 变成某个贪心解之后，若没有并列最大，下一步 `evaluatePolicy` 才和值迭代的备份重合。并列时概率被拆成 `1/nmax`，备份是这几个动作的平均，不是任取一个 `max`。
 
-`gridworld_dp.html` 的按钮直接调 `agent.evaluatePolicy()` 和 `agent.updatePolicy()`，定时器轮流按这两个按钮；*不*调 `agent.act` / `learn`，也没有 agent 在格子里走的仿真（对照 link:reinforcejs/gridworld_td.html[`gridworld_td.html`]）。页面底部文档草稿写的是 `agent.learn()`，以及 `agent.act()` 未传状态 `s`；演示能跑是因为 UI 自己维护 `state`，不是那段示例。`learn` 本体是：
+`gridworld_dp.html` 的按钮直接调 `agent.evaluatePolicy()` 和 `agent.updatePolicy()`，定时器轮流按这两个按钮；*不*调 `agent.act` / `learn`，也没有 agent 在格子里走的仿真（对照 link:reinforcejs/gridworld_td.html[`gridworld_td.html`]）。页面底部文档草稿写的是 `agent.learn()`，以及 `agent.act()` 未传状态 `s`。演示能跑是因为按钮不走这两行；本页也没有行走用的 `state`。`learn` 本体是：
 
 [source,javascript]
 ----
@@ -248,7 +248,7 @@ v = rs + this.gamma * this.V[ns]
 
 === 5.3 `gridworld_dp.html` 界面
 
-link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化：`start()` 里 `env = new Gridworld()`，`agent = new RL.DPAgent(env, {'gamma':0.9})`。`drawGrid()` 用 `agent.V[s]` 给格子染色（正偏红、负偏蓝，幅度约 `|V|×100`），用 `agent.P[a*gs+s]` 画四向箭头；非零 `Rarr[s]` 显示 `R ±1.0` 等。墙格（`T[s]===1`）灰色，不画 `V` 和箭头。
+link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化：`start()` 里 `env = new Gridworld()`，`agent = new RL.DPAgent(env, {'gamma':0.9})`。`drawGrid()` 用 `agent.V[s]` 染色：`V>0` 压低红蓝通道、格子偏绿；`V<0` 压低绿蓝通道、格子偏红。通道偏移是 `V×100`（`ms = 100`），左上角数字是 `V.toFixed(2)`。箭头用 `agent.P[a*gs+s]`。非零 `Rarr[s]` 写成 `R ` 加一位小数；改回 0 时这段*不*清空旧文字。墙格（`T[s]===1`）灰色 `#AAA`，不画 `V` 和箭头。选中格覆盖成 `#FF0`。
 
 [cols="1,2",options="header"]
 |===
