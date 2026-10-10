@@ -314,7 +314,26 @@ link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化（�
 | 右
 |===
 
-*格子点击 + Cell reward 滑条*：`cellClicked(s)` 选中格（再点取消），选中格填 `#FF0`。滑条范围约 `-5 .. 5.1`、步长 `0.1`，只改 `env.Rarr[selected]`。**不会**自动重算 `V` 或 `π`；改完需再点 Evaluation / Update 或开 Toggle。页面说明里「改奖励看策略怎么变」指的就是手动迭代。
+==== Cell reward 滑条（改 MDP 的 `R(s)`）
+
+页面上 **Cell reward:** 一行加水平滑条，只在 `gridworld_dp.html` 出现；`gridworld_td.html` 没有。用途是**交互式改某一格的即时奖励**，观察备份之后整张 `V` 和箭头怎么变，不是调 `γ`、学习率，也不能让 agent 在格子上走。
+
+[cols="1,2",options="header"]
+|===
+| 操作
+| 行为
+
+| 未选格（文案 `(select a cell)`）
+| 点网格选一格；滑条拖动**不会**写 `Rarr`（`slide` 回调里 `selected >= 0` 才生效）
+| 已选格（黄底 `#FF0`，文案为当前 `Rarr[s]`）
+| 拖滑条 → `env.Rarr[selected] = ui.value`，`drawGrid()` 重画。对应 DP / `reward()` 里的 `R(s)`，**不含** TD 页每步 `-0.01`
+| 再点同一格
+| 取消选中，文案回到 `(select a cell)`
+|===
+
+滑条 `$("#rewardslider").slider`：`min: -5`，`max: 5.1`，`step: 0.1`。改 `Rarr` 后**不会**自动 `evaluatePolicy` / `updatePolicy`；须再点 Evaluation、Update 或开 Toggle。典型玩法：先迭代到箭头稳定 → 选中某格（例如原 `+1` 的 55）→ 拖滑条改成 `-1` 或 `0` → 再 Toggle，看策略绕开或转向新「高奖区」。`drawGrid` 只在 `Rarr[s] !== 0` 时写 `R …` 文字；某格改回 0 时，旧标签可能仍留在格子上，以 `Rarr` 为准。
+
+`cellClicked(s)` 与滑条共用变量 `selected`；Reset 只恢复 `env.reset()` 的默认 `Rarr`，**不**清 `selected`（仍可能指着上一局选中的格）。
 
 建议分两套点法看。先关掉正在跑的 Toggle，再 Reset。
 
