@@ -109,7 +109,7 @@ experimental-karpathy/
 
 建议读序：
 
-1. `gridworld_dp.html` 里的 `Gridworld` — <<s4,§4>> 的状态、墙、奖励
+1. `gridworld_dp.html` 里的 `Gridworld` — <<s4-2-1,§4.2.1>> 问题背景，再 <<s4-2,§4.2>> 编码、墙、奖励
 2. `DPAgent.evaluatePolicy` / `updatePolicy` — <<s5,§5>>；四个按钮与画板含义见 <<s5-3,§5.3>>
 3. `TDAgent.act` / `learn` / `learnFromTuple` — <<s6,§6>>。`gridworld_td.html` 里 `#agentspec` 文本框的默认 `spec`
 4. `DQNAgent.forwardQ` / `learnFromTuple`，对照 `R.updateMat` — <<s7,§7>>
@@ -156,6 +156,37 @@ var ix = a * this.ns + s;
 
 [#s4-2]
 === 4.2 GridWorld：10×10，奖励挂在当前格
+
+[#s4-2-1]
+==== 4.2.1 问题背景
+
+演示页里的 GridWorld 是 Sutton 书式玩具地图，**不是**本仓库 link:../experimental-rl/grid-world/grid-world-qlearning/README.md[`grid-world-qlearning`] 那种「左上角 `S`、右下角 `G`、到终点 `terminated`、一局最短路」的设定。
+
+[cols="1,1,1",options="header"]
+|===
+| {nbsp}
+| *Karpathy GridWorld（本克隆）*
+| *experimental-rl 5×5*
+
+| 叙事
+| 从**起点**走向地图**中间**高奖励格；另有若干 `-1` 与墙
+| 从 `S` 到 `G`；几乎只有步长惩罚，到 `G` 一次 `+1`
+| 起点
+| `startState()` → `s = 0`（左上角）
+| 固定 `S`，可随机起点训练
+| 「终点」
+| 状态 **55**（`x=5,y=5`，正中间）`Rarr[55]=+1`；页面称 goal，**不是吸收态**
+| 右下角 `G`；踩到即 `terminated`
+| 在算什么
+| **每个**状态 `s` 在折扣 `γ` 下的长期回报 `V(s)` / `Q(s,a)` 与策略（全图箭头）
+| 同一 MDP，但演示强调一条 episodic 轨迹到 `G`
+|===
+
+**DP 页**（<<s5-3,§5.3>>）：不算「从某格走到某格」的一条轨迹。agent 不落在格子上，只对 100 个状态做备份，画整张 `V` 和 `π`。
+
+**TD 页**（<<s6,§6>>）：有仿真。`state` 从 `env.startState()`（0）出发；在 **55** 上再动一步会 **传回 0**（`sampleNextState` 带 `reset_episode`），开新一局。奖励主要是 **离开格 `s` 前** 读 `Rarr[s]`（再加每步 `-0.01`），不是「只有到达 goal 才给分」。智能体侧也 **没有** `done` 后 bootstrap 截断（见下文与 `q_learning_train.py` 对照）。
+
+读编码、墙、奖励字段之前，先记住：这是 **全图策略 / 价值** 问题；起点与中间 +1 格只是 TD 仿真和口头叙述用的锚点。
 
 `gridworld_dp.html` 和 `gridworld_td.html` 里的 `Gridworld` 是同一份。`gh = gw = 10`，`gs = 100`。编码 `s = x * gh + y`，`x = floor(s / 10)`，`y = s % 10`。四个动作：
 
@@ -244,7 +275,7 @@ v = rs + this.gamma * this.V[ns]
 [#s5-3]
 === 5.3 `gridworld_dp.html` 界面
 
-link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化：`start()` 里 `env = new Gridworld()`，`agent = new RL.DPAgent(env, {'gamma':0.9})`。`drawGrid()` 用 `agent.V[s]` 染色：`V>0` 压低红蓝通道、格子偏绿；`V<0` 压低绿蓝通道、格子偏红。通道偏移是 `V×100`（`ms = 100`），左上角数字是 `V.toFixed(2)`。箭头用 `agent.P[a*gs+s]`。非零 `Rarr[s]` 写成 `R ` 加一位小数；改回 0 时这段**不**清空旧文字。墙格（`T[s]===1`）灰色 `#AAA`，不画 `V` 和箭头。选中格覆盖成 `#FF0`。
+link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化（问题设定见 <<s4-2-1,§4.2.1>>）：`start()` 里 `env = new Gridworld()`，`agent = new RL.DPAgent(env, {'gamma':0.9})`。`drawGrid()` 用 `agent.V[s]` 染色：`V>0` 压低红蓝通道、格子偏绿；`V<0` 压低绿蓝通道、格子偏红。通道偏移是 `V×100`（`ms = 100`），左上角数字是 `V.toFixed(2)`。箭头用 `agent.P[a*gs+s]`。非零 `Rarr[s]` 写成 `R ` 加一位小数；改回 0 时这段**不**清空旧文字。墙格（`T[s]===1`）灰色 `#AAA`，不画 `V` 和箭头。选中格覆盖成 `#FF0`。
 
 [cols="1,2",options="header"]
 |===
@@ -304,6 +335,8 @@ link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化：`s
 
 [#s6]
 == 6. TDAgent
+
+GridWorld 上的 TD 演示从 `startState()`（0）出发，在 55 传回起点开新局；地图与奖励场见 <<s4-2-1,§4.2.1>>。
 
 不向环境要 `nextStateDistribution`。交互是：
 
