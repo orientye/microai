@@ -191,14 +191,14 @@ var ix = a * this.ns + s;
 
 == 5. DPAgent
 
-类注释写 “Value Iteration”。`learn` 的注释也这么写。算出来的是*修改的策略迭代、评估只扫一遍*：
+类注释写 “Value Iteration”。`learn` 的注释也这么写。算出来的是**修改的策略迭代、评估只扫一遍**：
 
-1. `evaluatePolicy`：按*当前* `π` 对每个 `s` 做一次同步贝尔曼备份，写入新的 `V`
+1. `evaluatePolicy`：按**当前** `π` 对每个 `s` 做一次同步贝尔曼备份，写入新的 `V`
 2. `updatePolicy`：对每个 `s` 选 `r + γ V(s')` 最大的动作，平分概率
 
-经典值迭代把 `max_a` 放进同一次备份。这里 `max` 在第二步，第一步对 `π` 取期望。`reset` 时 `π` 在合法动作上均匀，所以*第一轮*评估的是均匀策略，不是贪心策略。等 `π` 变成某个贪心解之后，若没有并列最大，下一步 `evaluatePolicy` 才和值迭代的备份重合。并列时概率被拆成 `1/nmax`，备份是这几个动作的平均，不是任取一个 `max`。
+经典值迭代把 `max_a` 放进同一次备份。这里 `max` 在第二步，第一步对 `π` 取期望。`reset` 时 `π` 在合法动作上均匀，所以第一轮评估的是均匀策略，不是贪心策略。等 `π` 变成某个贪心解之后，若没有并列最大，下一步 `evaluatePolicy` 才和值迭代的备份重合。并列时概率被拆成 `1/nmax`，备份是这几个动作的平均，不是任取一个 `max`。
 
-`gridworld_dp.html` 的按钮直接调 `agent.evaluatePolicy()` 和 `agent.updatePolicy()`，定时器轮流按这两个按钮；*不*调 `agent.act` / `learn`，也没有 agent 在格子里走的仿真（对照 link:reinforcejs/gridworld_td.html[`gridworld_td.html`]）。页面底部文档草稿写的是 `agent.learn()`，以及 `agent.act()` 未传状态 `s`。演示能跑是因为按钮不走这两行；本页也没有行走用的 `state`。`learn` 本体是：
+`gridworld_dp.html` 的按钮直接调 `agent.evaluatePolicy()` 和 `agent.updatePolicy()`，定时器轮流按这两个按钮；**不**调 `agent.act` / `learn`，也没有 agent 在格子里走的仿真（对照 link:reinforcejs/gridworld_td.html[`gridworld_td.html`]）。页面底部文档草稿写的是 `agent.learn()`，以及 `agent.act()` 未传状态 `s`。演示能跑是因为按钮不走这两行；本页也没有行走用的 `state`。`learn` 本体是：
 
 [source,javascript]
 ----
