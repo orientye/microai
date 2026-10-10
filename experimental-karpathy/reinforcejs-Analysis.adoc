@@ -11,16 +11,6 @@
 演示与接口说明写在四个 HTML 里，完整讲义在 link:http://cs.stanford.edu/people/karpathy/reinforcejs[Stanford 主页]。 +
 本文件按*这份克隆的真实源码*拆，不按主页上的理想公式。
 
-它不接在 micrograd → microgpt → nanoGPT 那条读序后面。那三份拆的是标量自动微分怎么长成 GPT。这份库拆的是强化学习智能体：`act` 选动作，`learn` 改 `V` / `Q` / 网络。
-
-阅读建议：
-
-- §1～§3 先对位置：六个类里只有三个挂到 `RL` 上。
-- *§4～§7* 是能跑的部分：环境契约、`DPAgent`、`TDAgent`、`DQNAgent`。对照本仓库 link:../experimental-rl/grid-world/README.md[`experimental-rl/grid-world`] 和 link:../experimental-rl/cliff-walking/README.md[`cliff-walking`]。
-- §8 是源码里注释掉导出的策略梯度。对照 link:../experimental-rl/grid-world/grid-world-ppo/README.md[`grid-world-ppo`] 时，先看它缺了什么，再看公式。
-
-'''
-
 == 1. 概要
 
 `lib/rl.js` 约 1530 行，两个 IIFE。前半段是 `R`：从 link:https://github.com/karpathy/recurrentjs[recurrentjs] 拆出来的矩阵和表达式图，`Graph.backward` 沿闭包把梯度推回 `Mat.dw`。后半段是 `RL`，六个智能体：
