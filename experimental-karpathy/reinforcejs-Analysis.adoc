@@ -250,7 +250,7 @@ link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化：`s
 | *Policy Update*
 | `updatePolicy()` → `agent.updatePolicy()` → `drawGrid()`。固定当前 `V`，每个 `s` 贪心改 `π`（§5.2）。箭头长度 ∝ 概率；`prob===0` 隐藏。并列最优时多条箭头等长
 | *Toggle Value Iteration*
-| `runValueIteration()`：第一次点开 `setInterval`，每 100ms 先 `evaluatePolicy` 再 `updatePolicy` 并重画；再点一次 `clearInterval` 停止。即「每轮只扫一遍 `V` 就改 `π`」的 modified value iteration，*不等* 策略评估收敛
+| `runValueIteration()`：第一次点开 `setInterval`，每 100ms 先 `evaluatePolicy` 再 `updatePolicy` 并重画；再点一次 `clearInterval` 停止。控制流仍是策略迭代，但内层评估固定成一轮（modified policy iteration，\(k=1\)），*不等* \(V^\pi\) 收敛。按钮用值迭代这个名字
 | *Reset*
 | `resetAll()`：`env.reset()` 恢复默认地图与 `Rarr`，`agent.reset()` 令 `V=0`、`π` 在合法动作上均匀，再 `drawGrid()`。若定时器在跑，源码*不会*自动停 Toggle，应先关再 Reset
 |===
@@ -279,13 +279,20 @@ link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化：`s
 
 *格子点击 + Cell reward 滑条*：`cellClicked(s)` 选中格（再点取消），选中格填 `#FF0`。滑条范围约 `-5 .. 5.1`、步长 `0.1`，只改 `env.Rarr[selected]`。*不会*自动重算 `V` 或 `π`；改完需再点 Evaluation / Update 或开 Toggle。页面说明里「改奖励看策略怎么变」指的就是手动迭代。
 
-建议操作顺序（对照 Sutton 第 4 章策略迭代 / 值迭代）：
+建议分两套点法看。先关掉正在跑的 Toggle，再 Reset。
+
+*策略迭代*（评估到收敛，再改进一次）：
 
 1. Reset → 均匀 `π`、`V=0`
-2. 多次 Policy Evaluation → 只看 `V` 从奖励格向外扩散
-3. Policy Update → 箭头指向 lookahead 更大的动作
-4. 交替点 Evaluation / Update，或 Toggle 直到箭头稳定
-5. 选中某格改滑条奖励，再 Toggle → 观察 `π` 如何跟着变
+2. 连点 Policy Evaluation，直到左上角数字不再变。第一下只把 `V(s)` 写成 `R(s)`，`+1` 还在原格；继续点，奖励才沿当前 `π` 向外传。这一段不要点 Policy Update
+3. 数字停住后点一次 Policy Update。箭头按这份 \(V^\pi\) 改向
+4. 再连点 Evaluation 到数字不动，再点一次 Update。重复到箭头也不再变
+
+*Toggle Value Iteration*（每轮只评估一次就改进）：
+
+1. Reset
+2. 点 Toggle，直到箭头稳定。每一拍是一轮 Evaluation 加一轮 Update，不是把上一段的评估做完
+3. 再点 Toggle 停下。选中一格改滑条奖励，再开 Toggle，看 `π` 跟着变
 
 '''
 
