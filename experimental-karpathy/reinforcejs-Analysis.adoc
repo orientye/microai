@@ -337,6 +337,8 @@ link:reinforcejs/gridworld_dp.html[`gridworld_dp.html`] 是纯 DP 可视化（�
 
 建议分两套点法看。先关掉正在跑的 Toggle，再 Reset。
 
+==== 策略迭代与值迭代
+
 *策略迭代*（评估到收敛，再改进一次）：
 
 1. Reset → 均匀 `π`、`V=0`
